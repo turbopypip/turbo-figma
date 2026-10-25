@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { parentPort, workerData } from 'node:worker_threads';
 import { performance } from 'node:perf_hooks';
 import { inflateFrame, nodeFields, parseNetworkSelection } from './network.js';
@@ -30,7 +31,9 @@ try {
     if (!b.length || b.toString('base64') !== event.payload) throw new Error('Invalid binary payload');
     if (b.subarray(0, 8).toString() === 'fig-wire') {
       if (codec || b.length < 12 || b.readUInt32LE(8) !== 1) throw new Error('Unsupported or repeated fig-wire schema');
-      codec = new BoundedWireDecoder(inflateFrame(b.subarray(12), WIRE_LIMITS.schemaBytes), new Set([...nodeFields].filter(f => f !== 'symbolData')));
+      const schema = inflateFrame(b.subarray(12), WIRE_LIMITS.schemaBytes);
+      model!.setLayoutSchemaHash(createHash('sha256').update(schema).digest('hex'));
+      codec = new BoundedWireDecoder(schema, nodeFields);
       return;
     }
     if (!codec) throw new Error('Missing wire schema');

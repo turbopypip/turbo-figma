@@ -1,0 +1,64 @@
+import { safeId } from './network.js';
+type Node = Record<string, any>;
+type Scope = { overrides: Node[]; derived: Node[] };
+export type InstanceContext = { scopes: Scope[]; prefix: string; symbols: string[]; properties?: Record<string,Node> };
+const pathOf = (n: Node) => (n.guidPath?.guids ?? []).map(safeId) as string[];
+const patch = (base: Node, changes: Node[]) => {
+  const result = {...base};
+  for (const change of changes) for (const [key,value] of Object.entries(change)) {
+    if (['guid','guidPath','parentIndex','phase','overrideKey'].includes(key)) continue;
+    if (key === 'componentPropAssignments' && Array.isArray(value) && value.length) {
+      const assignments = new Map((result[key] ?? []).map((p:Node)=>[safeId(p.defID),p]));
+      for (const p of value) assignments.set(safeId(p.defID),p);
+      result[key] = [...assignments.values()];
+    } else result[key] = value;
+  }
+  return result;
+};
+/** Resolve only the selected branch, using bounded address reads of component definitions. */
+export function instanceNode(node: Node, context?: InstanceContext) {
+  if (!context) return node;
+  const key = safeId(node.overrideKey ?? node.guid);
+  let effective = node;
+  // Inner instance patches first; outer instance patches have final precedence.
+  for (const scope of context.scopes) {
+    effective = patch(effective, scope.overrides.filter(n=>{const p=pathOf(n);return p.length===1&&p[0]===key;}));
+    effective = patch(effective, scope.derived.filter(n=>{const p=pathOf(n);return p.length===1&&p[0]===key;}));
+  }
+  for (const ref of effective.componentPropRefs ?? []) {
+    const assigned = context.properties?.[safeId(ref.defID)];
+    if (!assigned) continue;
+    const v = assigned.varValue?.value ?? assigned.value ?? assigned.initialValue;
+    if (ref.componentPropNodeField === 'VISIBLE' && typeof v?.boolValue === 'boolean') effective = {...effective,visible:v.boolValue};
+    else if (ref.componentPropNodeField === 'TEXT_DATA' && (v?.textDataValue ?? v?.textValue)) effective = {...effective,textData:v.textDataValue ?? v.textValue};
+    else if (ref.componentPropNodeField === 'OVERRIDDEN_SYMBOL_ID' && (v?.symbolIdValue?.guid ?? v?.guidValue)) effective = {...effective,overriddenSymbolID:v.symbolIdValue?.guid ?? v.guidValue};
+    else effective = {...effective,instanceUnresolved:true,instanceError:'Unsupported component property binding'};
+  }
+  return effective;
+}
+export function enterInstance(node: Node, id: string, read: (id:string)=>Node | undefined, context?: InstanceContext) {
+  if (node.symbolData?.uniformScaleFactor !== undefined && node.symbolData.uniformScaleFactor !== 1) throw new Error('Scaled instance geometry requires verified scale resolution');
+  const symbol = node.overriddenSymbolID ?? node.symbolData?.symbolID;
+  if (!symbol) return {error:'Component reference absent'} as const;
+  const symbolId = safeId(symbol), master = read(symbolId);
+  if (!master || master.type !== 'SYMBOL') return {error:'Component definition absent'} as const;
+  if (context?.symbols.includes(symbolId) || (context?.symbols.length ?? 0) >= 32) throw new Error('Component cycle or nesting limit exceeded');
+  const scopes: Scope[] = [{overrides:node.symbolData?.symbolOverrides ?? [],derived:node.derivedSymbolData ?? []}];
+  const key = safeId(node.overrideKey ?? node.guid);
+  const scopeTo = (records: Node[]) => records.flatMap(n=>{
+    const p=pathOf(n);
+    return p.length>1&&p[0]===key ? [{...n,guidPath:{guids:n.guidPath.guids.slice(1)}}] : [];
+  });
+  for (const outer of context?.scopes ?? []) scopes.push({overrides:scopeTo(outer.overrides),derived:scopeTo(outer.derived)});
+  if (Buffer.byteLength(JSON.stringify(scopes)) > 1024*1024) throw new Error('Instance override context limit exceeded');
+  const properties: Record<string,Node> = {};
+  for (const d of master.componentPropDefs ?? []) if (d.initialValue || d.varValue) properties[safeId(d.id)] = d;
+  for (const a of node.componentPropAssignments ?? []) properties[safeId(a.defID)] = a;
+  const effective: Node = {...master,...node,layoutInheritance:{componentId:symbolId}};
+  if (node.overriddenSymbolID && node.symbolData?.symbolID) {
+    const original = read(safeId(node.symbolData.symbolID));
+    if (original?.name === node.name && master.name !== undefined) effective.name = master.name;
+  }
+  if (!node.instanceError) delete effective.instanceUnresolved;
+  return {masterId:symbolId,effective,context:{scopes,prefix:id.startsWith('I')?id:`I${id}`,symbols:[...(context?.symbols??[]),symbolId],properties}};
+}

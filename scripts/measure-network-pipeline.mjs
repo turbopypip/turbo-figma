@@ -33,7 +33,7 @@ let fixtureBytes = await readFile(captureFile), dump = JSON.parse(fixtureBytes.t
 const fixtureHash = createHash('sha256').update(fixtureBytes).digest('hex'); fixtureBytes = null;
 if (dump.version !== 2 || dump.dropped !== 0 || !Array.isArray(dump.events) || dump.events.length > 10000) throw new Error('Use a complete v2 probe with zero dropped events');
 const url = new URL(dump.fileUrl); url.search = ''; url.searchParams.set('node-id', args['node-id'] || '1:1');
-const query = { url: url.href, depth: 50, maxNodes: 500, offset: 0, includeHidden: true };
+const query = { format:'debug', url: url.href, depth: 50, maxNodes: 500, offset: 0, includeHidden: true };
 const selection = parseNetworkSelection(query.url);
 const keys = dump.events.filter(e => e.kind === 'ws-open' && e.url === `wss://www.figma.com/api/multiplayer/${selection.fileKey}`).map(e => e.key);
 if (keys.length !== 1) throw new Error('Fixture must contain one selected-file multiplayer connection');

@@ -29,7 +29,7 @@ test('optional worker metrics expose phases and byte fields without changing out
   const parent = path.resolve('.cache/figma-network/benchmarks'); await mkdir(parent, { recursive: true });
   const directory = await mkdtemp(path.join(parent, 'metric-test-')); t.after(() => rm(directory, { recursive: true, force: true }));
   const captureFile = path.join(directory, 'fixture.json'); await writeFile(captureFile, JSON.stringify(syntheticCapture()));
-  const params = { captureFile, url: 'https://www.figma.com/design/benchmark/File?node-id=1-1', depth: 1, maxNodes: 5, offset: 0, includeHidden: true };
+  const params = { format:'debug', captureFile, url: 'https://www.figma.com/design/benchmark/File?node-id=1-1', depth: 1, maxNodes: 5, offset: 0, includeHidden: true };
   const measurements = [];
   const result = await readNetworkSnapshot(params, undefined, m => { measurements.push(m); throw Error('observer failed'); });
   assert.equal(result.nodes.length, 1);

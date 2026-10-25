@@ -32,7 +32,7 @@ if (process.argv[2] === '--child') {
   const root=fileURLToPath(new URL('../',import.meta.url)), parent=path.join(root,'.cache/figma-network/benchmarks');
   await mkdir(parent,{recursive:true});const directory=await mkdtemp(path.join(parent,'disk-'));
   const project=path.join(directory,'workspace');await mkdir(project);
-  const config={project,query:{url:values.url || 'https://www.figma.com/design/benchmark/File?node-id=1-1',depth:50,maxNodes:500,offset:0,includeHidden:true}};
+  const config={project,query:{format:'debug',url:values.url || 'https://www.figma.com/design/benchmark/File?node-id=1-1',depth:50,maxNodes:500,offset:0,includeHidden:true}};
   let fixtureBytes=0;
   if(values.capture) { if(!values.url)throw Error('--capture requires --url');config.captureFile=path.resolve(values.capture); }
   else {

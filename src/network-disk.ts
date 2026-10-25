@@ -1,3 +1,8 @@
+import { designContextNode } from './network-context.js';
+import { geometryContext, type GeometryContext } from './network-geometry.js';
+import { instanceNode, enterInstance, type InstanceContext } from './network-instances.js';
+import { networkLayout } from './network-layout.js';
+import { responseBudget } from './network-pagination.js';
 import { openSync, closeSync, readSync, writeSync, ftruncateSync } from 'node:fs';
 import { join } from 'node:path';
 import { nodeFields, parseNetworkSelection, safeId, type NetworkQuery } from './network.js';
@@ -25,6 +30,8 @@ function read(fd: number, size: number, position: number) {
 }
 /** An on-disk hash table + node log + linked child edges; no document map in RAM. */
 export class DiskNetworkSnapshot {
+  private layoutSchemaHash?: string;
+  setLayoutSchemaHash(hash: string) { this.layoutSchemaHash = hash; }
   private fds: number[] = [];
   private selected = new Map<string, string>();
   private selectedBytes = 0;
@@ -75,7 +82,7 @@ export class DiskNetworkSnapshot {
     const id = safeId(n.guid), slot = this.slot(id, true)!;
     if (slot.buffer.readUInt32LE(32)) throw new Error('Duplicate node');
     const kept: Record<string, any> = {};
-    for (const field of nodeFields) if (field !== 'symbolData' && n[field] !== undefined) kept[field] = n[field];
+    for (const field of nodeFields) if (n[field] !== undefined) kept[field] = n[field];
     if (n.type === 'INSTANCE') kept.instanceUnresolved = true;
     const data = Buffer.from(JSON.stringify(kept));
     if (data.length > DISK_LIMITS.nodeBytes || this.bytes + data.length > DISK_LIMITS.totalBytes) throw new Error('Decoded node/disk size limit exceeded');
@@ -106,19 +113,19 @@ export class DiskNetworkSnapshot {
     this.batchNodes = 0;
   }
   finish() { if (!this.ended || !this.count) throw new Error('Incomplete initial load: JOIN_END or nodes missing. Recapture after loading finishes.'); }
-  private node(id: string) {
+  private node(id: string, cache = true) {
     const cached = this.selected.get(id);
     if (cached !== undefined) return JSON.parse(cached);
     const slot = this.slot(id), length = slot?.buffer.readUInt32LE(32);
     if (!slot || !length) throw new Error('Selected node not present in capture');
     const value = read(this.log, length, slot.buffer.readDoubleLE(24)).toString('utf8');
     const charge = 2 * (value.length + id.length) + 128;
-    if (this.selectionId && this.selected.size < SELECTION_LIMITS.nodes && this.selectedBytes + charge <= SELECTION_LIMITS.bytes) {
+    if (cache && this.selectionId && this.selected.size < SELECTION_LIMITS.nodes && this.selectedBytes + charge <= SELECTION_LIMITS.bytes) {
       this.selected.set(id, value); this.selectedBytes += charge;
     }
     return JSON.parse(value);
   }
-  private children(id: string): string[] {
+  private children(id: string, cache = true): string[] {
     const slot = this.slot(id);
     if (!slot) return [];
     if (slot.buffer.readUInt32LE(40) > DISK_LIMITS.siblings) throw new Error('Sibling count limit exceeded; select a smaller branch');
@@ -126,7 +133,7 @@ export class DiskNetworkSnapshot {
     let next = slot.buffer.readUInt32LE(36), bytes = 0;
     while (next) {
       const edge = read(this.edges, EDGE_BYTES, (next - 1) * EDGE_BYTES);
-      const child = `${edge.readDoubleLE(0)}:${edge.readDoubleLE(8)}`, position = this.node(child).parentIndex.position;
+      const child = `${edge.readDoubleLE(0)}:${edge.readDoubleLE(8)}`, position = this.node(child, cache).parentIndex.position;
       bytes += Buffer.byteLength(position) + child.length;
       if (bytes > DISK_LIMITS.siblingBytes) throw new Error('Sibling ordering size limit exceeded');
       list.push({ id: child, position }); next = edge.readUInt32LE(16);
@@ -139,29 +146,61 @@ export class DiskNetworkSnapshot {
     if (fileKey !== this.fileKey) throw new Error('Selection file does not match capture');
     if (!Number.isInteger(params.depth) || params.depth < 0 || params.depth > 50 || !Number.isInteger(params.maxNodes) || params.maxNodes < 1 || params.maxNodes > 500 || !Number.isSafeInteger(params.offset) || params.offset < 0) throw new Error('Invalid traversal limits');
     if (this.selectionId !== nodeId) { this.selected.clear(); this.selectedBytes = 0; this.selectionId = nodeId; }
+    const nodeBudget = responseBudget(params) - 3072;
     this.node(nodeId);
-    const stack = [{ id: nodeId, depth: 0 }], seen = new Set<string>(), pending: string[] = [], skipped: string[] = [], nodes: any[] = [];
+    const ancestors: {id:string;node:Record<string,any>}[] = [];
+    let ancestor = this.node(nodeId).parentIndex?.guid;
+    const ancestorIds = new Set<string>([nodeId]);
+    while (ancestor) {
+      const id = safeId(ancestor);
+      if (ancestorIds.has(id) || ancestors.length >= 64) throw new Error('Cycle in ancestors or depth limit exceeded');
+      ancestorIds.add(id);
+      if (!this.slot(id)?.buffer.readUInt32LE(32)) break;
+      const node = this.node(id,false); ancestors.push({id,node:{type:node.type,resizeToFit:node.resizeToFit,transform:node.transform}});
+      if (node.type === 'CANVAS') break;
+      ancestor = node.parentIndex?.guid;
+    }
+    let rootGeometry: GeometryContext | undefined;
+    for (const a of ancestors.reverse()) rootGeometry = geometryContext(a.node,a.id,rootGeometry);
+    const stack: {geometry?:GeometryContext;id:string; sourceId:string; depth:number; parent?:Record<string,any>; parentId?:string; context?:InstanceContext}[] = [{ id: nodeId, sourceId:nodeId, depth: 0, geometry:rootGeometry }];
+    const seen = new Set<string>(), pending: string[] = [], skipped: string[] = [], nodes: any[] = [];
     let eligible = 0, bytes = 0, pendingCount = 0, skippedCount = 0, outputFull = false;
     while (stack.length) {
       const item = stack.pop()!;
       if (seen.has(item.id)) throw new Error('Cycle in selected tree');
       seen.add(item.id);
-      const n = this.node(item.id);
-      if (!params.includeHidden && n.visible === false) { skippedCount++; if (skipped.length < 1000) skipped.push(item.id); continue; }
+      let n = instanceNode(this.node(item.sourceId, !item.context), item.context);
+      if (seen.size > DISK_LIMITS.nodes) throw new Error('Rendered selection node limit exceeded');
+      if (!params.includeHidden && n.visible === false) { skippedCount++; if (skipped.length < 10) skipped.push(item.id); continue; }
+      let childSource = item.sourceId, childContext = item.context;
+      if (n.type === 'INSTANCE') {
+        const resolved = enterInstance(n, item.id, id=>this.slot(id)?.buffer.readUInt32LE(32) ? this.node(id,false) : undefined, item.context);
+        if ('error' in resolved) n = {...n,instanceUnresolved:true,instanceError:resolved.error};
+        else { n=resolved.effective; childSource=resolved.masterId; childContext=resolved.context; }
+      }
+      const geometry = geometryContext(n,item.id,item.geometry);
+      if (!params.includeHidden && n.visible === false) { skippedCount++; if (skipped.length < 10) skipped.push(item.id); continue; }
       if (eligible++ >= params.offset && nodes.length < params.maxNodes && !outputFull) {
-        const { guid, parentIndex, phase, ...properties } = n;
-        let entry = { id: item.id, parentId: parentIndex ? safeId(parentIndex.guid) : null, depth: item.depth, ...properties };
-        if (Buffer.byteLength(JSON.stringify(entry)) > 120000) entry = { id: item.id, parentId: entry.parentId, depth: item.depth,
-          name: typeof n.name === 'string' ? n.name.slice(0, 1000) : undefined, type: n.type, propertiesOmitted: 'Node exceeds output limit' };
+        const { guid, parentIndex, phase, symbolData, derivedSymbolData, componentPropAssignments, componentPropRefs, componentPropDefs, overrideKey, guidPath, ...properties } = n;
+        const parentId = item.parentId ?? (parentIndex ? safeId(parentIndex.guid) : null);
+        const parentSlot = !item.parent && parentId ? this.slot(parentId) : undefined;
+        const parent = item.parent ?? (parentSlot?.buffer.readUInt32LE(32) ? this.node(parentId!, false) : undefined);
+        let entry: Record<string, any> = { layout: networkLayout(n, parent, this.layoutSchemaHash, geometry), id: item.id, parentId, ...(item.context ? {sourceNodeId:item.sourceId} : {}), depth: item.depth, ...properties };
+        if (params.format !== 'debug') entry = designContextNode(entry);
+        if (Buffer.byteLength(JSON.stringify(entry)) > Math.min(120000, nodeBudget - 1)) entry = { id: item.id, parentId: entry.parentId, depth: item.depth,
+          name: typeof n.name === 'string' ? n.name.slice(0, 100) : undefined, type: typeof n.type === 'string' ? n.type.slice(0, 100) : undefined, propertiesOmitted: 'Node exceeds output limit' };
+        if (Buffer.byteLength(JSON.stringify(entry)) + 1 > nodeBudget) entry = { id: item.id, parentId: entry.parentId, depth: item.depth, propertiesOmitted: 'Node exceeds output limit' };
         const length = Buffer.byteLength(JSON.stringify(entry));
-        if (bytes + length > 150000) outputFull = true;
-        else { nodes.push(entry); bytes += length; }
+        if (bytes + length + 1 > nodeBudget) outputFull = true;
+        else { nodes.push(entry); bytes += length + 1; }
       }
       if (item.depth >= params.depth) {
-        if (this.slot(item.id)!.buffer.readUInt32LE(40)) { pendingCount++; if (pending.length < 1000) pending.push(item.id); }
+        if (this.slot(childSource)?.buffer.readUInt32LE(40)) { pendingCount++; if (pending.length < 10) pending.push(item.id); }
       } else {
-        const children = this.children(item.id);
-        for (let i = children.length - 1; i >= 0; i--) stack.push({ id: children[i], depth: item.depth + 1 });
+        const children = this.children(childSource, !childContext);
+        if (!['HORIZONTAL','VERTICAL','GRID'].includes(n.stackMode) && ['GROUP','BOOLEAN_OPERATION','VECTOR','FRAME','SYMBOL','INSTANCE'].includes(n.type)) children.reverse();
+        for (let i = children.length - 1; i >= 0; i--) stack.push({ id: childContext ? `${childContext.prefix};${children[i]}` : children[i], sourceId:children[i],
+          depth: item.depth + 1, parent:n, parentId:item.id, context:childContext, geometry });
       }
     }
     const next = params.offset + nodes.length;
@@ -170,7 +209,7 @@ export class DiskNetworkSnapshot {
       traversal: { eligibleRecords: eligible, returned: nodes.length, pendingDepth: pending, skippedHidden: skipped,
         pendingDepthCount: pendingCount, skippedHiddenCount: skippedCount, diagnosticListsTruncated: pendingCount > pending.length || skippedCount > skipped.length,
         nextOffset: next < eligible ? next : null }, incomplete: true,
-      limitations: ['Captured initial state, not current live state.', 'Instances/overrides are not expanded; variables, geometry blobs and image assets are not resolved.',
-        'Sibling order uses wire position; full equivalence with rendered Layers is not verified.'] };
+      limitations: ['Captured initial state, not current live state.', 'Instance children use canonical instance/source paths, not browser-session generated IDs; variables, geometry blobs and image assets are not resolved.',
+        'Layers order uses wire position for Auto Layout and reverse paint order for other containers; layout parity is verified on the documented control selection.'] };
   }
 }

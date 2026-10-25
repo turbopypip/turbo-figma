@@ -6,9 +6,10 @@ const LIMIT = 128 * 1024 * 1024;
 export const nodeFields = new Set(['guid', 'phase', 'parentIndex', 'type', 'name', 'visible', 'opacity', 'size', 'transform',
   'fillPaints', 'strokePaints', 'strokeWeight', 'strokeAlign', 'cornerRadius', 'rectangleCornerRadii',
   'stackMode', 'stackSpacing', 'stackHorizontalPadding', 'stackVerticalPadding', 'stackPaddingRight', 'stackPaddingBottom',
-  'stackChildAlignSelf', 'stackPrimaryAlignItems', 'stackCounterAlignItems', 'stackPrimarySizing', 'stackCounterSizing',
+  'resizeToFit', 'minSize', 'maxSize', 'horizontalConstraint', 'verticalConstraint', 'textAutoResize', 'stackCounterSpacing', 'stackCounterAlignContent',
+  'stackChildPrimaryGrow', 'stackPositioning', 'stackWrap', 'stackChildAlignSelf', 'stackPrimaryAlignItems', 'stackCounterAlignItems', 'stackPrimarySizing', 'stackCounterSizing',
   'fontSize', 'fontName', 'textData', 'textAlignHorizontal', 'textAlignVertical', 'lineHeight', 'letterSpacing',
-  'symbolData', 'componentKey']);
+  'componentPropAssignments', 'componentPropRefs', 'componentPropDefs', 'symbolData', 'derivedSymbolData', 'overrideKey', 'overriddenSymbolID', 'guidPath', 'componentKey']);
 export const safeId = (g: any): string => {
   if (!g || !Number.isSafeInteger(g.sessionID) || !Number.isSafeInteger(g.localID) || g.sessionID < 0 || g.localID < 0) throw new Error('Invalid node GUID');
   return `${g.sessionID}:${g.localID}`;
@@ -69,7 +70,7 @@ export function compileWireSchema(bytes: Uint8Array, markersOnly = false) {
   return compileSchema(schema);
 }
 
-export type NetworkQuery = { url: string; depth: number; maxNodes: number; offset: number; includeHidden: boolean };
+export type NetworkQuery = { format?: 'context' | 'debug'; url: string; depth: number; maxNodes: number; offset: number; includeHidden: boolean; maxBytes?: number; continuation?: string };
 export function parseNetworkSelection(raw: string) {
   const u = new URL(raw);
   const match = /^\/(?:design|file)\/([A-Za-z0-9]+)(?:\/|$)/.exec(u.pathname);

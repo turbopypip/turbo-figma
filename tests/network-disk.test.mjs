@@ -15,23 +15,23 @@ const schema = parseSchema(`
  enum Phase { CREATED = 0; UPDATED = 1; }
  struct Guid { uint sessionID; uint localID; }
  struct Parent { Guid guid; string position; }
- message NodeChange { Guid guid = 1; Phase phase = 2; Parent parentIndex = 3; string name = 4; bool visible = 5; NodeChange[] overrides = 6; byte[] ignored = 7; string textData = 8; }
+ message NodeChange { Guid guid = 1; Phase phase = 2; Parent parentIndex = 3; string name = 4; bool visible = 5; NodeChange[] overrides = 6; byte[] ignored = 7; string textData = 8; string stackMode = 9; string stackChildAlignSelf = 10; string stackPrimarySizing = 11; string stackCounterSizing = 12; float stackChildPrimaryGrow = 13; }
  message Message { MessageType type = 1; NodeChange[] nodeChanges = 2; }
 `);
 const codec = compileSchema(schema), wireSchema = encodeBinarySchema(schema);
 const guid = n => ({ sessionID: 1, localID: n });
 const node = (n, parent, position='!', extra={}) => ({guid:guid(n),phase:'CREATED',name:`node ${n}`, ...(parent ? {parentIndex:{guid:guid(parent),position}} : {}),...extra});
-const query = {url:'https://www.figma.com/design/test/File?node-id=1-1',depth:50,maxNodes:500,offset:0,includeHidden:false};
+const query = {format:'debug',url:'https://www.figma.com/design/test/File?node-id=1-1',depth:50,maxNodes:500,offset:0,includeHidden:false};
 const identity={fileKey:'test',sessionId:'test',generation:1};
 async function directory(t) { const root=path.resolve('.cache/figma-network/tests');await mkdir(root,{recursive:true});const dir=await mkdtemp(path.join(root,'disk-'));t.after(()=>rm(dir,{recursive:true,force:true}));return dir; }
 function records(nodes) {
  const header=Buffer.alloc(12);header.write('fig-wire');header.writeUInt32LE(1,8);
  return [Buffer.concat([header,zstd(wireSchema)]),...[{type:'JOIN_START'},{type:'NODE_CHANGES',nodeChanges:nodes},{type:'JOIN_END'}].map(m=>zstd(codec.encodeMessage(m)))].map((b,eventSequence)=>({version:1,kind:'ws-received',session:'main',requestId:'1',eventSequence,opcode:2,payload:b.toString('base64')}));
 }
-async function capture(store, values) {
+async function capture(store, values, chunkSize = 97) {
  const writer=await store.begin(identity);let i=0;
  const data=Buffer.from(values.map(v=>JSON.stringify(v)+'\n').join(''));
- for(let offset=0;offset<data.length;offset+=97) await writer.append(i++,data.subarray(offset,offset+97));
+ for(let offset=0;offset<data.length;offset+=chunkSize) await writer.append(i++,data.subarray(offset,offset+chunkSize));
  await writer.commit({schemaReceived:true,joinStarted:true,joinEnded:true,sequenceComplete:true,droppedParts:0,receivedParts:i});
 }
 test('bounded decoder visits only top-level nodes, skips blobs, and agrees with Kiwi values',()=>{
@@ -126,4 +126,70 @@ test('selection RAM cache is bounded, spills reads to disk and replaces previous
  assert.ok(stats.nodes<result.traversal.eligibleRecords);assert.ok(stats.bytes<=SELECTION_LIMITS.bytes);
  assert.deepEqual(model.query({...query,offset:2048,maxNodes:1}).nodes.map(n=>n.id),['1:2049']);
  model.query({...query,url:query.url.replace('1-1','1-2')});assert.equal(model.selectionCacheStats().nodes,1);
+});
+
+test('signed pages bind snapshot and query, fit UTF-8 budget, and never lose oversized or hidden nodes', async t => {
+ const store = await NetworkStore.create(await directory(t));t.after(releaseNetworkSelection);
+ await capture(store,records([node(1),...Array.from({length:24},(_,i)=>node(i+2,1,String(i).padStart(3,'0'),{textData:'😀'.repeat(i===5?40000:200),visible:i!==8}))]),65536);
+ const options={...query,maxNodes:3,maxBytes:4096};
+ let page=await readStoredNetworkSnapshot(store,identity,options), ids=[];
+ const firstToken=page.traversal.continuation;let omitted=false;
+ for(let i=0;;i++) {
+  assert.ok(i<30);assert.ok(Buffer.byteLength(JSON.stringify(page))<=4096);
+  ids.push(...page.nodes.map(n=>n.id));omitted ||= page.nodes.some(n=>n.propertiesOmitted);
+  if(!page.traversal.continuation)break;
+  page=await readStoredNetworkSnapshot(store,identity,{...options,continuation:page.traversal.continuation});
+ }
+ assert.deepEqual(ids,['1:1',...Array.from({length:24},(_,i)=>`1:${i+2}`).filter(id=>id!=='1:10')]);
+ assert.equal(new Set(ids).size,ids.length);assert.ok(omitted);
+ for(const change of [{depth:0},{includeHidden:true},{maxNodes:4},{maxBytes:5000},{url:query.url.replace('1-1','1-2')},{offset:1},{continuation:firstToken+'x'}]) {
+  await assert.rejects(readStoredNetworkSnapshot(store,identity,{...options,continuation:firstToken,...change}),/continuation/);
+ }
+ // Evicting the worker does not expire a valid continuation for an immutable source.
+ await releaseNetworkSelection();
+ assert.notEqual((await readStoredNetworkSnapshot(store,identity,{...options,continuation:firstToken})).nodes[0].id,'1:1');
+ const newer={...identity,generation:2};const writer=await store.begin(newer);
+ await writer.append(0,Buffer.from(records([node(1),node(2,1)]).map(v=>JSON.stringify(v)+'\n').join('')));
+ await writer.commit({schemaReceived:true,joinStarted:true,joinEnded:true,sequenceComplete:true,droppedParts:0,receivedParts:1});
+ await assert.rejects(readStoredNetworkSnapshot(store,newer,{...options,continuation:firstToken}),/stale continuation/);
+ const shallow=await readStoredNetworkSnapshot(store,identity,{...options,depth:0});
+ assert.equal(shallow.traversal.continuation,null);assert.equal(shallow.traversal.pendingDepthCount,1);
+});
+
+test('managed layout uses parent axis outside selection without retaining that parent in the RAM cache', async t => {
+ const store = await NetworkStore.create(await directory(t));t.after(releaseNetworkSelection);
+ await capture(store,records([node(1,null,'!',{stackMode:'HORIZONTAL'}),node(2,1,'!',{stackMode:'VERTICAL',stackChildAlignSelf:'STRETCH',stackCounterSizing:'FIXED',stackPrimarySizing:'RESIZE_TO_FIT'})]));
+ const result=await readStoredNetworkSnapshot(store,identity,{...query,url:query.url.replace('1-1','1-2')});
+ assert.equal(result.nodes[0].layout.sizing.height.mode,'fill');assert.equal(result.nodes[0].layout.sizing.width.mode,'fixed');
+ assert.equal(result.nodes[0].layout.parentDirection,'row');assert.equal(result.metrics.selectionCache.nodes,1);
+ assert.equal(result.nodes[0].layout.geometry.size,null);assert.equal(result.nodes[0].layout.css.width,undefined);
+});
+
+test('default context preserves useful layout, hides wire diagnostics and shares the selection cache with debug', async t => {
+ const store=await NetworkStore.create(await directory(t));t.after(releaseNetworkSelection);
+ await capture(store,records([node(1,null,'!',{stackMode:'HORIZONTAL',stackPrimarySizing:'FIXED',stackCounterSizing:'RESIZE_TO_FIT'}),node(2,1,'!',{textData:'Hello',stackChildPrimaryGrow:1})]));
+ const options={...query,format:undefined,maxNodes:1};
+ const first=await readStoredNetworkSnapshot(store,identity,options);
+ assert.equal(first.live,false);assert.deepEqual(first.snapshot,identity);
+ for(const key of ['metrics','documentRecords','initialBatches']) assert.equal(first[key],undefined);
+ assert.equal(first.nodeCount,1);assert.equal(first.childrenTruncated,true);
+ assert.equal(first.nodes[0].stackMode,undefined);assert.equal(first.nodes[0].layout.source.stackMode,undefined);
+ assert.equal(first.nodes[0].layout.source.Flow,'Horizontal');
+ assert.equal(first.nodes[0].layout.css.display,'flex');
+ assert.equal(first.nodes[0].layout.sizing.height.mode,'hug');
+ assert.equal(first.nodes[0].properties[0].section,'properties-inspection-panel');
+ assert.equal(first.nodes[0].layout.copyText,undefined);
+ assert.ok(first.nodes[0].layout.unresolved.length);
+ const second=await readStoredNetworkSnapshot(store,identity,{...options,continuation:first.traversal.continuation});
+ assert.equal(second.nodes[0].id,'1:2');assert.equal(second.nodes[0].parentId,'1:1');
+ assert.equal(second.nodes[0].text,'Hello');assert.equal(second.nodes[0].textData,undefined);
+ assert.equal(second.nodes[0].layout.sizing.width.mode,'fill');assert.equal(second.nodes[0].layout.css.width,undefined);
+ assert.equal(second.traversal.complete,true);assert.equal(second.truncated,false);
+ await assert.rejects(readStoredNetworkSnapshot(store,identity,{...options,format:'debug',continuation:first.traversal.continuation}),/continuation/);
+ const debug=await readStoredNetworkSnapshot(store,identity,query);
+ const context=await readStoredNetworkSnapshot(store,identity,{...query,format:'context'});
+ assert.equal(context.metrics,undefined);
+ const again=await readStoredNetworkSnapshot(store,identity,query);
+ assert.equal(again.metrics.selectionCacheHit,true);
+ assert.equal(debug.nodes[0].stackMode,'HORIZONTAL');assert.equal(debug.nodes[0].layout.copyText,undefined);
 });

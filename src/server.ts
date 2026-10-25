@@ -19,11 +19,12 @@ export function createServer(bridge: Bridge, assets: AssetStore, variablesFile?:
   }
   let networkBusy = false;
   server.registerTool('get_network_tree', {
-    description: 'EXPERIMENTAL: read an initial document snapshot from the managed disk cache using snapshot {fileKey, sessionId, generation}, or a legacy local probe JSON using captureFile. Supply exactly one source and a selection url from the same file. Streams bounded records into a temporary disk index. Does not read live Figma. Returns raw wire properties, explicit parent links and pagination. Not equivalent to the rendered component tree: instances/overrides, geometry blobs, images and variables are unresolved. Always disclose capturedAt and captureWarnings; never present as current live state. Use nextOffset with identical parameters for pagination. Hidden branches are excluded by default.',
-    inputSchema: z.object({ captureFile: z.string().min(1).max(4096).optional(),
+    description: 'EXPERIMENTAL: read an initial document snapshot from the managed disk cache using snapshot {fileKey, sessionId, generation}, or a legacy local probe JSON using captureFile. Supply exactly one source and a selection url from the same file. Streams bounded records into a temporary disk index. Does not read live Figma. By default returns design context with nodes, parentId, properties, layout.css/cssText, sizing (measured lengths in px), normalized source values, unresolved and hints. Wire records and decoder metrics are excluded. format=debug explicitly requests technical records for diagnostics only. Components are expanded within supported limits; unresolved components are explicit. Text/visual styles and UI-kit mapping are not yet normalized. Always disclose capturedAt and captureWarnings; never present as current live state. Use traversal.continuation with identical source, selection, depth, maxNodes, maxBytes, includeHidden and format; omit offset. Continuations expire on server restart or changed snapshot. maxBytes bounds the complete UTF-8 JSON result. Oversized node properties are explicitly omitted. Hidden branches are excluded by default.',
+    inputSchema: z.object({ format: z.enum(['context','debug']).default('context'), captureFile: z.string().min(1).max(4096).optional(),
       snapshot: z.object({ fileKey: z.string().regex(/^[A-Za-z0-9]+$/).max(256), sessionId: z.string().regex(/^[A-Za-z0-9_-]{1,128}$/), generation: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER) }).strict().optional(), url: z.string().url().max(2048),
       depth: z.number().int().min(0).max(50).default(12), maxNodes: z.number().int().min(1).max(500).default(200),
-      offset: z.number().int().min(0).default(0), includeHidden: z.boolean().default(false) }), annotations: read
+      maxBytes: z.number().int().min(4096).max(150000).default(150000), continuation: z.string().min(1).max(512).optional(),
+      offset: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).default(0), includeHidden: z.boolean().default(false) }), annotations: read
   }, (params, ctx) => safe(async () => {
     if (networkBusy) throw new Error('Network snapshot reader is busy');
     networkBusy = true;

@@ -1,3 +1,6 @@
+import { createHash } from 'node:crypto';
+import { createReadStream } from 'node:fs';
+import { paginationBinding, continuationOffset, makeContinuation, responseBudget } from './network-pagination.js';
 import { Worker } from 'node:worker_threads';
 import { dirname, isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -37,6 +40,18 @@ async function decode(params: Record<string, unknown>, cache: NetworkStore, sign
       const selection = parseNetworkSelection(params.url as string);
       const snapshot = params.snapshot as SnapshotIdentity | undefined;
       const manifest = snapshot ? await cache.readManifest(snapshot) : undefined;
+      const query = params as NetworkQuery;
+      const maxBytes = responseBudget(query);
+      let source: unknown = [cache.root, manifest];
+      if (!snapshot) {
+        const hash = createHash('sha256');
+        for await (const chunk of createReadStream(params.captureFile as string, { signal })) hash.update(chunk);
+        source = [params.captureFile, hash.digest('hex')];
+      }
+      const binding = paginationBinding(source, query);
+      const offset = query.continuation ? continuationOffset(query.continuation, binding) : query.offset;
+      if (query.continuation && query.offset !== 0) throw new Error('Use continuation without offset');
+      params = { ...params, offset, maxBytes };
       const key = snapshot ? JSON.stringify([cache.root, manifest, selection.nodeId]) : undefined;
       if (retained?.dead || !key || key !== retained?.key || selection.fileKey !== snapshot?.fileKey) await dispose();
       // Recheck immutable source bytes on a hit: clearing or corruption cannot revive old data.
@@ -62,7 +77,7 @@ async function decode(params: Record<string, unknown>, cache: NetworkStore, sign
       }
       const { worker } = retained;
       worker.ref();
-      const result = await new Promise((resolve, reject) => {
+      const result: any = await new Promise((resolve, reject) => {
         let settled = false;
         const finish = (error?: Error, result?: unknown) => {
           if (settled) return;
@@ -90,6 +105,30 @@ async function decode(params: Record<string, unknown>, cache: NetworkStore, sign
         retained!.idle = setTimeout(() => { void releaseNetworkSelection().catch(() => {}); }, 60000);
         retained!.idle.unref();
       }
+      if (query.format !== 'debug') {
+        delete result.metrics; delete result.documentRecords; delete result.initialBatches;
+        result.node = {id:result.rootId};
+        result.limitations.push('Text/visual styles and UI-kit matching are not yet normalized.');
+      }
+      // Bound the complete JSON result, including diagnostics, metrics and the continuation.
+      const finalize = () => {
+        const next = offset + result.nodes.length;
+        result.traversal.returned = result.nodes.length;
+        result.traversal.nextOffset = next < result.traversal.eligibleRecords ? next : null;
+        result.traversal.continuation = result.traversal.nextOffset === null ? null : makeContinuation(binding, next);
+        result.traversal.maxBytes = maxBytes;
+        if (query.format !== 'debug') {
+          result.nodeCount = result.nodes.length;
+          result.childrenTruncated = result.traversal.nextOffset !== null || result.traversal.pendingDepthCount > 0;
+          result.traversal.complete = !result.childrenTruncated;
+          result.truncated = result.childrenTruncated || result.nodes.some((n:any)=>n.propertiesOmitted);
+        }
+      };
+      finalize();
+      while (Buffer.byteLength(JSON.stringify(result)) > maxBytes && result.nodes.length > 1) {
+        result.nodes.pop(); finalize();
+      }
+      if (Buffer.byteLength(JSON.stringify(result)) > maxBytes) throw new Error('Response metadata exceeds byte limit; increase maxBytes');
       return result;
     });
   } catch (error) { await dispose(); throw error; }

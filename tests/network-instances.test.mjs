@@ -1,0 +1,46 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {mkdtemp,mkdir,rm} from 'node:fs/promises';
+import path from 'node:path';
+import {DiskNetworkSnapshot} from '../dist/network-disk.js';
+import {enterInstance,instanceNode} from '../dist/network-instances.js';
+const guid=n=>({sessionID:1,localID:n});
+const patch=(ids,extra)=>({guidPath:{guids:ids.map(guid)},...extra});
+const master={guid:guid(100),type:'SYMBOL',stackMode:'HORIZONTAL'};
+test('component patches use overrideKey, derived geometry, and outer overrides after nested overrides',()=>{
+ const inner={guid:guid(10),overrideKey:guid(99),type:'INSTANCE',symbolData:{symbolID:guid(100),symbolOverrides:[patch([20],{size:{x:4,y:4}})]},derivedSymbolData:[patch([20],{size:{x:8,y:8}})]};
+ const outer={scopes:[{overrides:[patch([99,20],{visible:false})],derived:[patch([99,20],{size:{x:12,y:12}})]}],prefix:'I1:1',symbols:[]};
+ const resolved=enterInstance(inner,'I1:1;1:10',()=>master,outer);
+ const child=instanceNode({guid:guid(200),overrideKey:guid(20),visible:true},resolved.context);
+ assert.equal(child.visible,false);assert.deepEqual(child.size,{x:12,y:12});assert.deepEqual(child.guid,guid(200));
+ assert.ok(enterInstance(inner,'1:1',()=>undefined).error);
+ assert.throws(()=>enterInstance(inner,'1:1',()=>master,{...outer,symbols:['1:100']}),/cycle/);
+});
+test('disk traversal expands instances in order, applies visibility and parent sizing, and paginates without master RAM index',async t=>{
+ const root=path.resolve('.cache/figma-network/tests');await mkdir(root,{recursive:true});const dir=await mkdtemp(path.join(root,'instances-'));
+ const model=new DiskNetworkSnapshot('test',dir);t.after(async()=>{model.close();await rm(dir,{recursive:true,force:true});});
+ const node=(id,parent,extra)=>({guid:guid(id),phase:'CREATED',...(parent?{parentIndex:{guid:guid(parent),position:String(id)}}:{}),...extra});
+ model.acceptMessage({type:'JOIN_START'});
+ for(const n of [node(1,null,{type:'FRAME',stackMode:'VERTICAL'}),node(2,1,{type:'INSTANCE',symbolData:{symbolID:guid(100),symbolOverrides:[patch([30],{visible:false})]},derivedSymbolData:[patch([20],{size:{x:40,y:8}})]}),node(100,null,{...master}),node(200,100,{type:'FRAME',overrideKey:guid(20),size:{x:10,y:8},stackChildPrimaryGrow:1}),node(300,100,{type:'RECTANGLE',overrideKey:guid(30)})])model.acceptNode(n);
+ model.acceptMessage({type:'NODE_CHANGES'});model.acceptMessage({type:'JOIN_END'});model.finish();
+ const q={format:'debug',url:'https://www.figma.com/design/test/File?node-id=1-1',depth:50,maxNodes:500,offset:0,includeHidden:false};
+ const r=model.query(q);
+ assert.deepEqual(r.nodes.map(n=>n.id),['1:1','1:2','I1:2;1:200']);
+ assert.equal(r.nodes[2].parentId,'1:2');assert.equal(r.nodes[2].layout.sizing.width.mode,'fill');
+ assert.equal(r.nodes[2].layout.geometry.size.width,40);assert.equal(r.nodes[1].instanceUnresolved,undefined);
+ assert.equal(r.nodes[1].symbolData,undefined);assert.equal(model.selectionCacheStats().nodes,2);
+ assert.equal(model.query({...q,includeHidden:true}).nodes.length,4);
+ assert.equal(model.query({...q,offset:2,maxNodes:1}).nodes[0].id,'I1:2;1:200');
+ assert.equal(model.query({...q,depth:1}).traversal.pendingDepthCount,1);
+});
+test('component assignments preserve false, merge by definition ID, swap symbols and reject unverified scaling',()=>{
+ const instance={guid:guid(2),type:'INSTANCE',symbolData:{symbolID:guid(100),uniformScaleFactor:1},componentPropAssignments:[{defID:guid(9),value:{boolValue:false}},{defID:guid(8),value:{guidValue:guid(102)}}]};
+ const r=enterInstance(instance,'1:2',()=>master);
+ const hidden=instanceNode({guid:guid(3),visible:true,componentPropRefs:[{defID:guid(9),componentPropNodeField:'VISIBLE'}]},r.context);
+ assert.equal(hidden.visible,false);
+ const swap=instanceNode({guid:guid(4),componentPropRefs:[{defID:guid(8),componentPropNodeField:'OVERRIDDEN_SYMBOL_ID'}]},r.context);
+ assert.deepEqual(swap.overriddenSymbolID,guid(102));
+ const merged=instanceNode(instance,{scopes:[{overrides:[patch([2],{componentPropAssignments:[{defID:guid(9),value:{boolValue:true}}]})],derived:[]}],prefix:'I1:1',symbols:[]});
+ assert.equal(merged.componentPropAssignments.length,2);assert.equal(merged.componentPropAssignments[0].value.boolValue,true);
+ assert.throws(()=>enterInstance({...instance,symbolData:{...instance.symbolData,uniformScaleFactor:2}},'1:2',()=>master),/Scaled instance/);
+});
