@@ -1,0 +1,11 @@
+[package]
+name = "figma-rust-helper"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"

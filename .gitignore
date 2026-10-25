@@ -5,3 +5,4 @@ artifacts/
 *.log
 ideas/
 .cache/
+/rust/helper/target/
