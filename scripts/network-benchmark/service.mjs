@@ -4,6 +4,7 @@ import path from 'node:path';
 import { readFile, mkdir } from 'node:fs/promises';
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import { Bridge } from '../../dist/bridge.js';
+import { releaseNetworkSelection } from '../../dist/network-reader.js';
 import { NetworkStore } from '../../dist/network-store.js';
 import { AssetStore } from '../../dist/assets.js';
 import { createServer } from '../../dist/server.js';
@@ -36,6 +37,10 @@ process.on('message', async msg => {
     try { emit({ id: msg.id, result: await exportProbe(cache, completedSnapshot, path.join(config.workspace, 'benchmark-probe.json')) }); }
     catch { emit({ id: msg.id, result: { error: 'Benchmark adapter failed' } }); }
   }
+  if (msg.type === 'release-selection') {
+    try { await releaseNetworkSelection(); emit({ id: msg.id, result: { released: true } }); }
+    catch { emit({ id: msg.id, result: { released: false } }); }
+  }
   if (msg.type === 'cache-status') {
     emit({ id: msg.id, result: { generations: completedCaptures, incomplete: 0, snapshot: completedSnapshot } });
   }
@@ -44,7 +49,7 @@ let closing = false;
 async function close() {
   if (closing) return; closing = true;
   emit({ type: 'final-metrics', ...metrics('shutdown') });
-  await bridge.close(); await handle.close();
+  await bridge.close(); await handle.close(); await releaseNetworkSelection();
   if (process.connected) process.disconnect();
 }
 process.stdin.once('end', () => void close());

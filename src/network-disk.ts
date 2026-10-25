@@ -2,6 +2,7 @@ import { openSync, closeSync, readSync, writeSync, ftruncateSync } from 'node:fs
 import { join } from 'node:path';
 import { nodeFields, parseNetworkSelection, safeId, type NetworkQuery } from './network.js';
 const SLOTS = 524288, SLOT_BYTES = 48, EDGE_BYTES = 24;
+export const SELECTION_LIMITS = { nodes: 2048, bytes: 4 * 1024 * 1024 } as const;
 export const DISK_LIMITS = { nodes: 200000, nodeBytes: 1024 * 1024, totalBytes: 512 * 1024 * 1024,
   siblings: 10000, siblingBytes: 2 * 1024 * 1024 } as const;
 function write(fd: number, data: Buffer, position: number) {
@@ -25,6 +26,10 @@ function read(fd: number, size: number, position: number) {
 /** An on-disk hash table + node log + linked child edges; no document map in RAM. */
 export class DiskNetworkSnapshot {
   private fds: number[] = [];
+  private selected = new Map<string, string>();
+  private selectedBytes = 0;
+  private selectionId?: string;
+  selectionCacheStats() { return { nodes: this.selected.size, bytes: this.selectedBytes }; }
   private log = 0;
   private table = 0;
   private edges = 0;
@@ -102,9 +107,16 @@ export class DiskNetworkSnapshot {
   }
   finish() { if (!this.ended || !this.count) throw new Error('Incomplete initial load: JOIN_END or nodes missing. Recapture after loading finishes.'); }
   private node(id: string) {
+    const cached = this.selected.get(id);
+    if (cached !== undefined) return JSON.parse(cached);
     const slot = this.slot(id), length = slot?.buffer.readUInt32LE(32);
     if (!slot || !length) throw new Error('Selected node not present in capture');
-    return JSON.parse(read(this.log, length, slot.buffer.readDoubleLE(24)).toString('utf8'));
+    const value = read(this.log, length, slot.buffer.readDoubleLE(24)).toString('utf8');
+    const charge = 2 * (value.length + id.length) + 128;
+    if (this.selectionId && this.selected.size < SELECTION_LIMITS.nodes && this.selectedBytes + charge <= SELECTION_LIMITS.bytes) {
+      this.selected.set(id, value); this.selectedBytes += charge;
+    }
+    return JSON.parse(value);
   }
   private children(id: string): string[] {
     const slot = this.slot(id);
@@ -126,6 +138,7 @@ export class DiskNetworkSnapshot {
     const { fileKey, nodeId } = parseNetworkSelection(params.url);
     if (fileKey !== this.fileKey) throw new Error('Selection file does not match capture');
     if (!Number.isInteger(params.depth) || params.depth < 0 || params.depth > 50 || !Number.isInteger(params.maxNodes) || params.maxNodes < 1 || params.maxNodes > 500 || !Number.isSafeInteger(params.offset) || params.offset < 0) throw new Error('Invalid traversal limits');
+    if (this.selectionId !== nodeId) { this.selected.clear(); this.selectedBytes = 0; this.selectionId = nodeId; }
     this.node(nodeId);
     const stack = [{ id: nodeId, depth: 0 }], seen = new Set<string>(), pending: string[] = [], skipped: string[] = [], nodes: any[] = [];
     let eligible = 0, bytes = 0, pendingCount = 0, skippedCount = 0, outputFull = false;

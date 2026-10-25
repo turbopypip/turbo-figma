@@ -16,7 +16,7 @@ export type FrameIdentity = z.infer<typeof frameSchema>;
 const ownerSchema = z.object({ owner: z.literal('figma-kilo-mcp'), version: z.literal(1), snapshot: identitySchema, frame: frameSchema.optional() }).strict();
 export const CACHE_RETENTION = { maxBytes: 1024 * 1024 * 1024, maxAgeMs: 7 * 24 * 60 * 60 * 1000 } as const;
 export type CacheInfo = { bytes: number; generations: number; incomplete: number; protectedEntries: number };
-type Coordinator = { busy: boolean; writerActive: boolean; readers: number };
+type Coordinator = { busy: boolean; writerActive: boolean; readers: number; invalidators?: Set<() => Promise<void>> };
 const coordinators = new Map<string, WeakRef<Coordinator>>();
 const manifestSchema = z.object({ version: z.literal(1), status: z.literal('ready'), snapshot: identitySchema, frame: frameSchema.optional(),
   parts: z.array(z.object({ bytes: z.number().int().min(1).max(MAX_PART_BYTES),
@@ -82,6 +82,12 @@ export class NetworkStore {
     const coordinator = coordinators.get(root)?.deref() ?? { busy: false, writerActive: false, readers: 0 };
     coordinators.set(root, new WeakRef(coordinator));
     return new NetworkStore(root, stamps, coordinator);
+  }
+  /** Readers register disposal of derived disk/RAM state before cache maintenance. */
+  onInvalidate(callback: () => Promise<void>): () => void {
+    const callbacks = this.coordinator.invalidators ??= new Set();
+    callbacks.add(callback);
+    return () => { callbacks.delete(callback); };
   }
   private async guard() {
     for (const [directory, stamp] of this.stamps) {
@@ -254,6 +260,7 @@ export class NetworkStore {
   }
   private async cleanUnlocked(mode: 'all' | 'prune') {
     this.assertIdle();
+    for (const invalidate of [...(this.coordinator.invalidators ?? [])]) await invalidate();
     const { entries, protectedEntries } = await this.inventory();
     const groups = new Set<string>();
     let retainedBytes = 0, removedBytes = 0, removedGenerations = 0;

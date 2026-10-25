@@ -45,7 +45,10 @@ test('pipeline harness writes isolated bounded report and marks browser coverage
   const report = JSON.parse(await readFile(output.report, 'utf8'));
   assert.equal(report.captureResult.events, 4); assert.equal(report.decodeResults.length, 2);
   assert.equal(report.decodeResults[0].documentRecords, 1);
-  assert.equal(report.workerMeasurements.length, 8); assert.ok(report.samples > 0);
+  assert.equal(report.workerMeasurements.length, 4);
+  assert.equal(report.decodeResults[0].metrics.selectionCacheHit, false);
+  assert.equal(report.decodeResults[1].metrics.selectionCacheHit, true);
+  assert.equal(report.decodeResults[1].metrics.loadDecodeIndexMs, 0); assert.ok(report.samples > 0);
   assert.equal(report.accounting.fullImplementationPeakBytes, null); assert.equal(report.accounting.budgetAccepted, false);
   assert.equal(report.accounting.sampledMcpPlusSelectedExtensionProcessesBytes, null);
   const config = JSON.parse(await readFile(path.join(directory, 'config.json'), 'utf8'));

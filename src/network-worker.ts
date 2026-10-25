@@ -50,14 +50,25 @@ try {
   measure('decoded');
   model.finish(); codec = undefined;
   measure('indexed');
-  const decodedAt = performance.now(), result = model.query(workerData);
+  const decodedAt = performance.now();
+  let result: ReturnType<DiskNetworkSnapshot['query']> | undefined = model.query(workerData);
+  const firstQueryMs = performance.now() - decodedAt;
   measure('queried');
-  const warnings = [];
+  const warnings: string[] = [];
   if (metadata.dropped) warnings.push(`${metadata.dropped} capture events were dropped; completeness is not guaranteed.`);
-  parentPort!.postMessage({ result: { ...result, ...(workerData.snapshot ? { snapshot: workerData.snapshot } : {}),
+  const respond = (params: any, reused: boolean) => {
+    const queryStart = performance.now();
+    const output = reused ? model!.query(params) : result;
+    parentPort!.postMessage({ result: { ...output, ...(workerData.snapshot ? { snapshot: workerData.snapshot } : {}),
     capturedAt: metadata.startedAt, stoppedAt: metadata.stoppedAt, captureWarnings: warnings,
-    metrics: { loadDecodeIndexMs: Math.round(decodedAt - started), queryMs: Math.round(performance.now() - decodedAt),
+    metrics: { selectionCacheHit: reused, selectionCache: model!.selectionCacheStats(), loadDecodeIndexMs: reused ? 0 : Math.round(decodedAt - started), queryMs: Math.round(reused ? performance.now() - queryStart : firstQueryMs),
       workerHeapUsedMiB: Math.round(process.memoryUsage().heapUsed / 1048576) } } });
+  };
+  respond(workerData, false); result = undefined;
+  if (workerData.retain) parentPort!.on('message', params => {
+    try { respond(params, true); }
+    catch (error) { parentPort!.postMessage({ error: error instanceof Error ? error.message : 'Selection failed' }); }
+  });
 } catch (error) {
   parentPort!.postMessage({ error: error instanceof Error ? error.message : 'Network snapshot failed' });
-} finally { model?.close(); }
+} finally { if (!workerData.retain) model?.close(); }

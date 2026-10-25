@@ -144,6 +144,9 @@ try {
     });
     decodeResults.push({ name, ...result });
   }
+  await stage('idle-retained-selection', () => delay(idleMs));
+  const released = await request('release-selection', {}, true);
+  if (!released.released) throw new Error('Selection release failed');
   await stage('release-1s', () => delay(1000));
   await stage('idle-after-release', () => delay(releaseMs));
   success = true;

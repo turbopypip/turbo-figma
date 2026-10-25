@@ -4,10 +4,10 @@ import { mkdir, mkdtemp, rm, writeFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { parseSchema, compileSchema, encodeBinarySchema } from 'kiwi-schema';
 import { BoundedWireDecoder, WIRE_LIMITS } from '../dist/network-wire.js';
-import { DiskNetworkSnapshot } from '../dist/network-disk.js';
+import { DiskNetworkSnapshot, SELECTION_LIMITS } from '../dist/network-disk.js';
 import { nodeFields } from '../dist/network.js';
 import { NetworkStore } from '../dist/network-store.js';
-import { readStoredNetworkSnapshot } from '../dist/network-reader.js';
+import { readStoredNetworkSnapshot, releaseNetworkSelection } from '../dist/network-reader.js';
 import { probeEvents } from '../dist/network-source.js';
 import { zstd } from './wire-fixture.mjs';
 const schema = parseSchema(`
@@ -92,4 +92,38 @@ test('legacy capture streams long escaped values and rejects malformed JSON or d
  for(const content of ['{"events":[],"version":2,"version":2}', '{"events":[{},]}','{"events":[],}','{"events":[{}]','{"events":[]} false']) {
   await writeFile(filename,content);await assert.rejects(async()=>{for await(const _ of probeEvents(filename)){};});
  }
+});
+
+test('selection reader reuses decoding across query options and evicts on node, generation, cleanup and shutdown', async t => {
+ const store = await NetworkStore.create(await directory(t));
+ t.after(releaseNetworkSelection);
+ await capture(store, records([node(3,1,'a',{visible:false}),node(4,3),node(2,1,'b'),node(1)]));
+ const first = await readStoredNetworkSnapshot(store,identity,query);
+ assert.equal(first.metrics.selectionCacheHit,false);
+ assert.deepEqual(first.nodes.map(n=>n.id),['1:1','1:2']);
+ const stages=[];
+ const second = await readStoredNetworkSnapshot(store,identity,{...query,includeHidden:true,offset:1,maxNodes:2},undefined,m=>stages.push(m.stage));
+ assert.equal(second.metrics.selectionCacheHit,true); assert.equal(second.metrics.loadDecodeIndexMs,0);
+ assert.deepEqual(stages,[]); assert.deepEqual(second.nodes.map(n=>n.id),['1:3','1:4']);
+ assert.equal(second.nodes[1].parentId,'1:3');
+ const changed = await readStoredNetworkSnapshot(store,identity,{...query,url:query.url.replace('1-1','1-2')});
+ assert.equal(changed.metrics.selectionCacheHit,false); assert.equal(changed.metrics.selectionCache.nodes,1);
+ const newer={...identity,generation:2}; const writer=await store.begin(newer);
+ const bytes=Buffer.from(records([node(1,null,'!',{name:'new generation'})]).map(v=>JSON.stringify(v)+'\n').join(''));
+ await writer.append(0,bytes);await writer.commit({schemaReceived:true,joinStarted:true,joinEnded:true,sequenceComplete:true,droppedParts:0,receivedParts:1});
+ const fresh=await readStoredNetworkSnapshot(store,newer,query);
+ assert.equal(fresh.metrics.selectionCacheHit,false);assert.equal(fresh.nodes[0].name,'new generation');
+ await store.clean(); assert.equal((await readdir(store.root)).filter(n=>n.startsWith('decode-')).length,0); await assert.rejects(readStoredNetworkSnapshot(store,newer,query),/ENOENT/);
+ assert.equal((await readdir(store.root)).filter(n=>n.startsWith('decode-')).length,0);
+});
+test('selection RAM cache is bounded, spills reads to disk and replaces previous branch',async t=>{
+ const model=new DiskNetworkSnapshot('test',await directory(t));t.after(()=>model.close());
+ model.acceptMessage({type:'JOIN_START'});model.acceptNode(node(1));
+ for(let i=2;i<SELECTION_LIMITS.nodes+20;i++)model.acceptNode(node(i,1,String(i).padStart(6,'0'),{name:'x'.repeat(2000)}));
+ model.acceptMessage({type:'NODE_CHANGES'});model.acceptMessage({type:'JOIN_END'});model.finish();
+ const result=model.query(query);const stats=model.selectionCacheStats();
+ assert.equal(result.traversal.eligibleRecords,SELECTION_LIMITS.nodes+19);
+ assert.ok(stats.nodes<result.traversal.eligibleRecords);assert.ok(stats.bytes<=SELECTION_LIMITS.bytes);
+ assert.deepEqual(model.query({...query,offset:2048,maxNodes:1}).nodes.map(n=>n.id),['1:2049']);
+ model.query({...query,url:query.url.replace('1-1','1-2')});assert.equal(model.selectionCacheStats().nodes,1);
 });
