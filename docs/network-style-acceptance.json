@@ -1,0 +1,42 @@
+{
+  "date": "2026-10-25",
+  "status": "accepted-with-documented-scope",
+  "scope": "Control examples of mixed text, solid fills, inside stroke, rectangle corners and effect parameters; not full visual parity.",
+  "formats": [
+    {
+      "format": "context",
+      "accepted": true,
+      "baselineSha256": "554b8a90bee77d9a24d90636a5ce8dc7985379d9b0f0ed205a9d720d8c48d29b",
+      "cases": 4,
+      "checks": 72,
+      "maxResponseBytes": 5985
+    },
+    {
+      "format": "debug",
+      "accepted": true,
+      "baselineSha256": "554b8a90bee77d9a24d90636a5ce8dc7985379d9b0f0ed205a9d720d8c48d29b",
+      "cases": 4,
+      "checks": 72,
+      "maxResponseBytes": 6768
+    }
+  ],
+  "layoutRegression": {
+    "nodes": 103,
+    "formats": [
+      "context",
+      "debug"
+    ],
+    "issues": 0
+  },
+  "verification": {
+    "typecheck": "passed",
+    "testsPassed": 181,
+    "testsFailed": 0,
+    "selfReview": "completed"
+  },
+  "limitations": [
+    "Unsupported paint composition, stroke geometry and effect rasterization are not mapped to approximate CSS.",
+    "Variable resolution and UI-kit matching remain TODO 13.",
+    "500 MB total-memory acceptance remains TODO 20."
+  ]
+}

@@ -1,3 +1,4 @@
+import { keepStyleField } from './network-style.js';
 import { ByteBuffer, type Definition, type Field } from 'kiwi-schema';
 
 export const WIRE_LIMITS = { schemaBytes: 2 * 1024 * 1024, frameBytes: 64 * 1024 * 1024,
@@ -114,7 +115,7 @@ export class BoundedWireDecoder {
       const field = (f: Field) => {
         tick();
         const streamNodes = depth === 0 && type === 'Message' && f.name === 'nodeChanges';
-        const retain = keep && (type === 'Message' ? f.name === 'type' : type === 'NodeChange' ? this.fields.has(f.name) : true);
+        const retain = keep && (type === 'Message' ? f.name === 'type' : type === 'NodeChange' ? this.fields.has(f.name) : keepStyleField(type, f.name));
         if (!f.isArray) {
           const v = read(f.type!, retain, depth + 1);
           if (retain) result![f.name] = v;

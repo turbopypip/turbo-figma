@@ -1,3 +1,4 @@
+import { networkStyle } from './network-style.js';
 import { designContextNode } from './network-context.js';
 import { geometryContext, type GeometryContext } from './network-geometry.js';
 import { instanceNode, enterInstance, type InstanceContext } from './network-instances.js';
@@ -185,7 +186,7 @@ export class DiskNetworkSnapshot {
         const parentId = item.parentId ?? (parentIndex ? safeId(parentIndex.guid) : null);
         const parentSlot = !item.parent && parentId ? this.slot(parentId) : undefined;
         const parent = item.parent ?? (parentSlot?.buffer.readUInt32LE(32) ? this.node(parentId!, false) : undefined);
-        let entry: Record<string, any> = { layout: networkLayout(n, parent, this.layoutSchemaHash, geometry), id: item.id, parentId, ...(item.context ? {sourceNodeId:item.sourceId} : {}), depth: item.depth, ...properties };
+        let entry: Record<string, any> = { style: networkStyle(n), layout: networkLayout(n, parent, this.layoutSchemaHash, geometry), id: item.id, parentId, ...(item.context ? {sourceNodeId:item.sourceId} : {}), depth: item.depth, ...properties };
         if (params.format !== 'debug') entry = designContextNode(entry);
         if (Buffer.byteLength(JSON.stringify(entry)) > Math.min(120000, nodeBudget - 1)) entry = { id: item.id, parentId: entry.parentId, depth: item.depth,
           name: typeof n.name === 'string' ? n.name.slice(0, 100) : undefined, type: typeof n.type === 'string' ? n.type.slice(0, 100) : undefined, propertiesOmitted: 'Node exceeds output limit' };

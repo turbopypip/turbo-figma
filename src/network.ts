@@ -1,9 +1,10 @@
 import { compileSchema, decodeBinarySchema } from 'kiwi-schema';
 import { Decompress } from 'fzstd';
+import { styleFields, keepStyleField } from './network-style.js';
 
 type RecordValue = Record<string, any>;
 const LIMIT = 128 * 1024 * 1024;
-export const nodeFields = new Set(['guid', 'phase', 'parentIndex', 'type', 'name', 'visible', 'opacity', 'size', 'transform',
+export const nodeFields = new Set([...styleFields, 'guid', 'phase', 'parentIndex', 'type', 'name', 'visible', 'opacity', 'size', 'transform',
   'fillPaints', 'strokePaints', 'strokeWeight', 'strokeAlign', 'cornerRadius', 'rectangleCornerRadii',
   'stackMode', 'stackSpacing', 'stackHorizontalPadding', 'stackVerticalPadding', 'stackPaddingRight', 'stackPaddingBottom',
   'resizeToFit', 'minSize', 'maxSize', 'horizontalConstraint', 'verticalConstraint', 'textAutoResize', 'stackCounterSpacing', 'stackCounterAlignContent',
@@ -64,6 +65,7 @@ export function compileWireSchema(bytes: Uint8Array, markersOnly = false) {
       if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(f.name) || forbidden.has(f.name)) throw new Error('Invalid schema field');
       // Read through omitted fields without retaining arrays/blobs in the model.
       if (d.name === 'Message') f.isDeprecated = !(markersOnly ? ['type'] : ['type', 'nodeChanges']).includes(f.name);
+      if (!keepStyleField(d.name, f.name)) f.isDeprecated = true;
       if (d.name === 'NodeChange') f.isDeprecated = !(markersOnly ? new Set(['phase']) : nodeFields).has(f.name);
     }
   }

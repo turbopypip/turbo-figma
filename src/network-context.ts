@@ -14,6 +14,7 @@ export function designContextNode(node: Value): Value {
   if (typeof text === 'string') result.text = text;
   if (node.instanceUnresolved) { result.instanceUnresolved = true; result.instanceError = node.instanceError; }
   if (!node.layout) return {...result,propertiesOmitted:node.propertiesOmitted ?? 'Layout unavailable'};
+  if (node.style) result.style = node.style;
   const l = node.layout, source: Value = {}, sizing: Value = {}, hints: Value[] = [];
   if (l.autoLayout.direction === 'row' || l.autoLayout.direction === 'column') source.Flow = l.autoLayout.direction === 'row' ? 'Horizontal' : 'Vertical';
   for (const axis of ['width','height']) {
@@ -28,8 +29,9 @@ export function designContextNode(node: Value): Value {
   const unresolved = (l.unavailable as string[]).map(property=>({property,reason:'Not available as a verified layout value in this snapshot.'}));
   if (node.instanceUnresolved) unresolved.push({property:'children',reason:node.instanceError ?? 'Component could not be resolved.'});
   result.properties = [{section:'properties-inspection-panel',fields:Object.entries(source).map(([name,value])=>({name,value}))}];
-  result.layout = {css:l.css,cssText:l.cssText,sizing,source,unresolved,hints,complete:false,
+  const css = {...l.css,...node.style?.css};
+  result.layout = {css,cssText:Object.entries(css).map(([k,v])=>`${k}: ${v};`).join('\n'),sizing,source,unresolved,hints,complete:false,
     geometry:l.geometry,measuredCss:l.measuredCss,constraints:l.constraints,
-    note:'Values come from a captured snapshot. source contains normalized design values, not UI observations. Text/visual styling and UI-kit matching are not yet normalized.'};
+    note:'Values come from a captured snapshot. source contains normalized design values, not UI observations. Visual styles and text ranges are in style; unsupported mappings are explicit. UI-kit matching is not yet normalized.'};
   return result;
 }

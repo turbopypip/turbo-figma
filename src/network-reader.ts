@@ -108,7 +108,7 @@ async function decode(params: Record<string, unknown>, cache: NetworkStore, sign
       if (query.format !== 'debug') {
         delete result.metrics; delete result.documentRecords; delete result.initialBatches;
         result.node = {id:result.rootId};
-        result.limitations.push('Text/visual styles and UI-kit matching are not yet normalized.');
+        result.limitations.push('Visual style limitations are listed per node; UI-kit matching is not yet normalized.');
       }
       // Bound the complete JSON result, including diagnostics, metrics and the continuation.
       const finalize = () => {
