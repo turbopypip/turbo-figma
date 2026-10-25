@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { open } from 'node:fs/promises';
 import path from 'node:path';
 
@@ -82,7 +83,10 @@ function colorKey(value: string): string | undefined {
 }
 const fontKey = (value: string) => value.split(',').map(v => v.trim().replace(/^(['"])(.*)\1$/, '$2').toLowerCase()).join(',');
 type ObjectValue = Record<string, any>;
-export function mapContextVariables(value: unknown, variables?: Map<string, string>, requestedFile?: string): unknown {
+export function variablesFingerprint(variables: Map<string,string>) {
+  return createHash('sha256').update(JSON.stringify([[...variables],[...(aliases.get(variables) ?? [])]])).digest('hex');
+}
+export function mapContextVariables(value: unknown, variables?: Map<string, string>, requestedFile?: string, options?: {maxCandidates: number}): unknown {
   if (!value || typeof value !== 'object') return value;
   const context = value as ObjectValue;
   const colorCandidates = (actual: string) => {
@@ -114,7 +118,9 @@ export function mapContextVariables(value: unknown, variables?: Map<string, stri
           return normalize(candidate) === normalize(comparable);
         }).map(([name]) => name);
         const matched = color ? candidates.length > 0 : candidates.length === 1;
-        variableMatching.push({property, value: part, candidates, status: matched ? 'matched' : candidates.length ? 'ambiguous' : 'not-found'});
+        variableMatching.push({property, value: part, candidates:options ? candidates.slice(0,options.maxCandidates) : candidates, status: matched ? 'matched' : candidates.length ? 'ambiguous' : 'not-found',
+          ...(options ? {source:'ui-kit-value-match',candidateCount:candidates.length,candidatesTruncated:candidates.length>options.maxCandidates,
+            selectionPolicy:color?'first-literal-color':'unique-category-match',ambiguous:candidates.length>1} : {})});
         return matched ? `var(${candidates[0]})` : part;
       };
       // Do not split functional values (calc, var, rgb) or font stacks.

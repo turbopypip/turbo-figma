@@ -111,4 +111,32 @@ test('styled context survives replay/cache/pagination within UTF-8 byte budget, 
  const first=await readStoredNetworkSnapshot(store,identity,{...params,format:'context',maxBytes:150000});
  const cached=await readStoredNetworkSnapshot(store,identity,{...params,format:'debug',maxBytes:150000});
  assert.equal(cached.metrics.selectionCacheHit,true);assert.deepEqual(cached.nodes[0].style,first.nodes[0].style);
+ const variablesFile=path.join(dir,'variables.scss');
+ await writeFile(variablesFile,':root { --mimir-size-text-a:20px; --mimir-size-text-b:24px; --red:#ff0000; }');
+ const query={...params,variablesFile,format:'context',maxBytes:150000,maxNodes:2};
+ const mapped=await readStoredNetworkSnapshot(store,identity,query);
+ assert.deepEqual(mapped.nodes[0].layout.resolvedValues,first.nodes[0].layout.css);
+ assert.equal(mapped.nodes[0].style.text.ranges[1].css['font-size'],'var(--mimir-size-text-b)');
+ assert.ok(mapped.traversal.continuation);
+ const mappedDebug=await readStoredNetworkSnapshot(store,identity,{...query,format:'debug'});
+ assert.equal(mappedDebug.metrics.selectionCacheHit,true);assert.deepEqual(mappedDebug.nodes[0].style,mapped.nodes[0].style);
+ const literal=await readStoredNetworkSnapshot(store,identity,{...query,variablesFile:undefined});
+ assert.equal(literal.nodes[0].style.text.ranges[1].css['font-size'],'24px');
+ await assert.rejects(readStoredNetworkSnapshot(store,identity,{...query,variablesFile:undefined,continuation:mapped.traversal.continuation}),/continuation/);
+ await writeFile(variablesFile,':root { --mimir-size-text-a:21px; --mimir-size-text-b:24px; --red:#ff0000; }');
+ await assert.rejects(readStoredNetworkSnapshot(store,identity,{...query,continuation:mapped.traversal.continuation}),/continuation/);
+ const refreshed=await readStoredNetworkSnapshot(store,identity,query);
+ assert.equal(refreshed.nodes[0].style.text.ranges[0].css['font-size'],'20px');
+ assert.notEqual(refreshed.variableMatching.fingerprint,mapped.variableMatching.fingerprint);
+ const matches=[];let next;
+ do {
+   const page=await readStoredNetworkSnapshot(store,identity,{...query,maxNodes:100,maxBytes:8192,continuation:next});
+   assert.ok(Buffer.byteLength(JSON.stringify(page))<=8192);matches.push(...page.nodes);next=page.traversal.continuation;
+ } while(next);
+ assert.equal(matches.length,13);assert.equal(new Set(matches.map(n=>n.id)).size,13);
+ const legacyMapped=await readNetworkSnapshot(query);
+ assert.equal(legacyMapped.nodes[0].style.text.ranges[1].css['font-size'],'var(--mimir-size-text-b)');
+ await writeFile(variablesFile,':root {'+Array.from({length:8193},(_,i)=>`--v-${i}:1px;`).join('')+'}');
+ await assert.rejects(readStoredNetworkSnapshot(store,identity,query),/UI-kit limit/);
+
 });

@@ -72,7 +72,7 @@ export function compileWireSchema(bytes: Uint8Array, markersOnly = false) {
   return compileSchema(schema);
 }
 
-export type NetworkQuery = { format?: 'context' | 'debug'; url: string; depth: number; maxNodes: number; offset: number; includeHidden: boolean; maxBytes?: number; continuation?: string };
+export type NetworkQuery = { variablesFile?: string; format?: 'context' | 'debug'; url: string; depth: number; maxNodes: number; offset: number; includeHidden: boolean; maxBytes?: number; continuation?: string };
 export function parseNetworkSelection(raw: string) {
   const u = new URL(raw);
   const match = /^\/(?:design|file)\/([A-Za-z0-9]+)(?:\/|$)/.exec(u.pathname);

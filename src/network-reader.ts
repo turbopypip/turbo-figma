@@ -1,3 +1,5 @@
+import { loadVariables, variablesFingerprint } from './variables.js';
+import { mapNetworkNodeVariables } from './network-variables.js';
 import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { paginationBinding, continuationOffset, makeContinuation, responseBudget } from './network-pagination.js';
@@ -48,7 +50,10 @@ async function decode(params: Record<string, unknown>, cache: NetworkStore, sign
         for await (const chunk of createReadStream(params.captureFile as string, { signal })) hash.update(chunk);
         source = [params.captureFile, hash.digest('hex')];
       }
-      const binding = paginationBinding(source, query);
+      const variables = query.variablesFile ? await loadVariables(query.variablesFile) : undefined;
+      if (variables && (variables.size>8192 || [...variables.keys()].some(name=>name.length>256)))
+        throw new Error('Network UI-kit limit: at most 8192 variables with names up to 256 characters');
+      const binding = paginationBinding([source,query.variablesFile ?? null,variables ? variablesFingerprint(variables) : null], query);
       const offset = query.continuation ? continuationOffset(query.continuation, binding) : query.offset;
       if (query.continuation && query.offset !== 0) throw new Error('Use continuation without offset');
       params = { ...params, offset, maxBytes };
@@ -108,8 +113,11 @@ async function decode(params: Record<string, unknown>, cache: NetworkStore, sign
       if (query.format !== 'debug') {
         delete result.metrics; delete result.documentRecords; delete result.initialBatches;
         result.node = {id:result.rootId};
-        result.limitations.push('Visual style limitations are listed per node; UI-kit matching is not yet normalized.');
+        result.limitations.push('Visual style limitations and unresolved native Figma variable references are listed per node. UI-kit matches are computed from values, not native bindings.');
       }
+      if (variables) result.nodes = result.nodes.map((node:any)=>mapNetworkNodeVariables(node,variables));
+      result.variableMatching = {source:'ui-kit-value-match',enabled:!!variables, nativeBindings:'style.nativeBindings',
+        ...(variables ? {fingerprint:variablesFingerprint(variables)} : {})};
       // Bound the complete JSON result, including diagnostics, metrics and the continuation.
       const finalize = () => {
         const next = offset + result.nodes.length;
@@ -127,6 +135,11 @@ async function decode(params: Record<string, unknown>, cache: NetworkStore, sign
       finalize();
       while (Buffer.byteLength(JSON.stringify(result)) > maxBytes && result.nodes.length > 1) {
         result.nodes.pop(); finalize();
+      }
+      if (Buffer.byteLength(JSON.stringify(result)) > maxBytes && result.nodes.length === 1) {
+        const n = result.nodes[0];
+        result.nodes = [{id:n.id,parentId:n.parentId,depth:n.depth,type:n.type,propertiesOmitted:'Node properties including variable matches exceed response byte limit'}];
+        finalize();
       }
       if (Buffer.byteLength(JSON.stringify(result)) > maxBytes) throw new Error('Response metadata exceeds byte limit; increase maxBytes');
       return result;

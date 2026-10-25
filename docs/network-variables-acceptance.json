@@ -1,0 +1,24 @@
+{
+  "accepted": true,
+  "date": "2026-10-25T12:02:34.949Z",
+  "format": "context",
+  "nodes": 103,
+  "originalPages": 3,
+  "mappedPages": 4,
+  "maxResponseBytes": 149958,
+  "scopes": 235,
+  "statuses": {
+    "matched": 202,
+    "ambiguous": 0,
+    "not-found": 237,
+    "unsupported": 436
+  },
+  "colorAmbiguities": 0,
+  "nativeReferences": 39,
+  "limitations": [
+    "Replay of saved capture; no fresh live UI comparison.",
+    "UI-kit file is supplied by caller; production provenance is not inferred.",
+    "Native definitions and modes remain unresolved."
+  ],
+  "uiKitProvenance": "Local test fixture from previous work; not a production UI-kit."
+}

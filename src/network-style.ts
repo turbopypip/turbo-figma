@@ -1,3 +1,4 @@
+import { nativeVariableBindings } from './network-variables.js';
 /** Conservative visual projection. No asset downloads, variable resolution or font-name heuristics. */
 type Value = Record<string, any>;
 const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
@@ -5,13 +6,14 @@ const nonnegative = (v: unknown): v is number => finite(v) && v >= 0;
 const unit = (v: unknown): v is number => finite(v) && v >= 0 && v <= 1;
 const number = (v: number) => String(Math.abs(v) < 1e15 ? Math.round(v * 1e6) / 1e6 : v);
 const pick = (v: Value, keys: readonly string[]) => Object.fromEntries(keys.filter(k => v[k] !== undefined).map(k => [k,v[k]]));
-export const styleFields = ['styleID','effects','blendMode','rectangleTopLeftCornerRadius','rectangleTopRightCornerRadius',
+export const styleFields = ['variableConsumptionMap','styleID','effects','blendMode','rectangleTopLeftCornerRadius','rectangleTopRightCornerRadius',
   'rectangleBottomRightCornerRadius','rectangleBottomLeftCornerRadius','rectangleCornerRadiiIndependent','cornerSmoothing',
   'borderStrokeWeightsIndependent','borderTopWeight','borderRightWeight','borderBottomWeight','borderLeftWeight',
   'dashPattern','strokeCap','strokeJoin','textCase','textDecoration','fontVariations','fontVariantSlashedZero',
   'paragraphSpacing','paragraphIndent','derivedTextData'] as const;
 /** Applied by both decoders: typography needs metadata, not glyph paths or font digests. */
 export function keepStyleField(type: string, field: string): boolean {
+  if (type === 'VariableAnyValue') return ['alias','boolValue','textValue','floatValue','colorValue','textDataValue','symbolIdValue'].includes(field);
   if (type === 'DerivedTextData') return field === 'fontMetaData';
   if (type === 'TextData') return ['characters','characterStyleIDs','styleOverrideTable','fontMetaData','lines'].includes(field);
   if (type === 'FontMetaData') return ['key','fontWeight','fontStyle'].includes(field);
@@ -151,6 +153,6 @@ export function networkStyle(n: Value) {
     if(ranges.length)for(const [key,value]of Object.entries(ranges[0].css)) if(ranges.every(r=>r.css[key]===value))css[key]=value as string;
     unresolved.push(...text.unresolved.map((s:string)=>'text.'+s));
   }
-  return {css,source,fills,strokes,effects,...(text?{text}:{}),unresolved:[...new Set(unresolved)],complete:false,
+  return {css,source,fills,strokes,effects,nativeBindings:nativeVariableBindings(n),...(text?{text}:{}),unresolved:[...new Set(unresolved)],complete:false,
     provenance:'captured-wire; numeric colors retain float precision; variables and unsupported CSS compositions remain unresolved'};
 }

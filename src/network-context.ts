@@ -32,6 +32,6 @@ export function designContextNode(node: Value): Value {
   const css = {...l.css,...node.style?.css};
   result.layout = {css,cssText:Object.entries(css).map(([k,v])=>`${k}: ${v};`).join('\n'),sizing,source,unresolved,hints,complete:false,
     geometry:l.geometry,measuredCss:l.measuredCss,constraints:l.constraints,
-    note:'Values come from a captured snapshot. source contains normalized design values, not UI observations. Visual styles and text ranges are in style; unsupported mappings are explicit. UI-kit matching is not yet normalized.'};
+    note:'Values come from a captured snapshot. source contains normalized design values, not UI observations. Visual styles and text ranges are in style; unsupported mappings are explicit. UI-kit value matches, when enabled, preserve original CSS in resolvedValues and are independent of native Figma bindings.'};
   return result;
 }
