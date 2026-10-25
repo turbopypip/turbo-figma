@@ -153,9 +153,17 @@ test('disk error is explicit and the failed generation remains unreadable', asyn
 });
 
 test('capture timeout disconnects idle producer and new connection can capture a fresh generation', async t => {
-  const { store, peer, bridge, connect } = await fixture(t, undefined, 80);
-  await request(peer, 'begin');
-  await once(peer, 'close');
+  // The same deadline also covers disk I/O in the replacement capture. Use
+  // the normal fixture budget: 80 ms can expire under the full suite's load.
+  const { store, peer, bridge, connect } = await fixture(t);
+  const closed = once(peer, 'close');
+  assert.equal((await request(peer, 'begin')).type, 'capture-result');
+  const [raw] = await once(peer, 'message');
+  const error = JSON.parse(raw);
+  assert.equal(error.type, 'capture-error');
+  assert.match(error.error, /Capture observation timeout/);
+  const [code] = await closed;
+  assert.equal(code, 1008);
   await wait(() => !bridge.status.connected);
   const next = await connect(); const sender = createCaptureSender(next, {...snapshot,generation:2});
   await sender.begin(); for(const record of initialRecords())await sender.append(encodeRecord(record)); await sender.finish(evidence(4));

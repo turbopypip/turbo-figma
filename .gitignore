@@ -5,4 +5,9 @@ artifacts/
 *.log
 ideas/
 .cache/
+/experiments/
+/RUST-MIGRATION.md
+/TASK.md
+/TODO-network-selection.md
+/docs/todo-14-variable-questions.md
 /rust/helper/target/

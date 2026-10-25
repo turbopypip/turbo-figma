@@ -27,16 +27,20 @@ export async function readRss(pids, platform = process.platform) {
 export function summarizeSamples(samples, roles) {
   const pids = pidList(roles.map(r => r.pid));
   if (pids.length !== roles.length) throw new Error('A PID must have only one role; worker threads share the MCP PID');
+  if (new Set(roles.map(r => r.name)).size !== roles.length) throw new Error('Role names must be unique');
   const byRole = {};
   for (const role of roles) {
     const values = samples.map(s => s.rss[role.pid]).filter(v => Number.isFinite(v));
     byRole[role.name] = { pid: role.pid, samples: values.length, sampledPeakRssBytes: values.length ? Math.max(...values) : null };
   }
-  const eligible = roles.filter(r => r.name === 'mcp' || r.name.startsWith('extension-'));
-  const totals = samples.filter(s => eligible.every(r => Number.isFinite(s.rss[r.pid])))
+  const implementation = roles.filter(r => r.name === 'mcp' || r.name.startsWith('implementation-'));
+  const implementationTotals = samples.filter(s => implementation.length && implementation.every(r => Number.isFinite(s.rss[r.pid]) && s.rss[r.pid] >= 0))
+    .map(s => implementation.reduce((n, r) => n + s.rss[r.pid], 0));
+  const eligible = roles.filter(r => r.name === 'mcp' || r.name.startsWith('implementation-') || r.name.startsWith('extension-'));
+  const totals = samples.filter(s => eligible.every(r => Number.isFinite(s.rss[r.pid]) && s.rss[r.pid] >= 0))
     .map(s => eligible.reduce((n, r) => n + s.rss[r.pid], 0));
   const extensionMeasured = eligible.some(r => r.name.startsWith('extension-'));
-  return { byRole, sampledMcpPlusSelectedExtensionProcessesBytes: extensionMeasured && totals.length ? Math.max(...totals) : null,
+  return { byRole, sampledImplementationPeakBytes: implementationTotals.length ? Math.max(...implementationTotals) : null, completeImplementationSamples: implementationTotals.length, sampledMcpPlusSelectedExtensionProcessesBytes: extensionMeasured && totals.length ? Math.max(...totals) : null,
     fullImplementationPeakBytes: null, budgetAccepted: false,
     reason: 'Sampling misses short peaks; selected browser PIDs do not prove complete extension/CDP attribution; end-to-end Windows acceptance is still pending.' };
 }

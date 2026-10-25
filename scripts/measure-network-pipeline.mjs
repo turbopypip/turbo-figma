@@ -10,12 +10,20 @@ import { parseArgs } from 'node:util';
 import { parseNetworkSelection } from '../dist/network.js';
 import { readRss, pidList, summarizeSamples } from './network-benchmark/rss.mjs';
 import { syntheticCapture } from './network-benchmark/fixture.mjs';
+import { dispatchSeries } from './network-benchmark/series.mjs';
+await dispatchSeries('pipeline');
+const observerCpuStart = process.cpuUsage();
 const { values: args } = parseArgs({ options: {
+  'variables-file': { type: 'string' },
+  public: { type: 'boolean' }, profile: { type: 'boolean' }, 'all-pages': { type: 'boolean' }, 'switch-node-id': { type: 'string' },
+  depth: { type: 'string', default: '12' }, 'max-bytes': { type: 'string', default: '24000' },
+  'warmup': { type: 'string', default: '0' }, 'warm-requests': { type: 'string', default: '1' },
   'reuse-pairing': { type: 'string' }, capture: { type: 'string' }, 'node-id': { type: 'string' }, synthetic: { type: 'boolean' }, live: { type: 'boolean' },
   'extension-pids': { type: 'string' }, 'interval-ms': { type: 'string', default: '20' },
   'idle-ms': { type: 'string', default: '1000' }, 'release-ms': { type: 'string', default: '10000' },
 } });
 const numeric = (name, min, max) => { const n = Number(args[name]); if (!Number.isInteger(n) || n < min || n > max) throw new Error(`Invalid ${name}`); return n; };
+const warmup = numeric('warmup', 0, 10000), warmRequests = numeric('warm-requests', 1, 10000);
 const intervalMs = numeric('interval-ms', 10, 1000), idleMs = numeric('idle-ms', 20, 60000), releaseMs = numeric('release-ms', 20, 60000);
 if (!!args.capture === !!args.synthetic) throw new Error('Choose --capture /path/probe.json --node-id ID or --synthetic');
 if (args.live && !args['extension-pids']) throw new Error('Live mode requires explicit --extension-pids from Chrome Task Manager');
@@ -33,7 +41,7 @@ let fixtureBytes = await readFile(captureFile), dump = JSON.parse(fixtureBytes.t
 const fixtureHash = createHash('sha256').update(fixtureBytes).digest('hex'); fixtureBytes = null;
 if (dump.version !== 2 || dump.dropped !== 0 || !Array.isArray(dump.events) || dump.events.length > 10000) throw new Error('Use a complete v2 probe with zero dropped events');
 const url = new URL(dump.fileUrl); url.search = ''; url.searchParams.set('node-id', args['node-id'] || '1:1');
-const query = { format:'debug', url: url.href, depth: 50, maxNodes: 500, offset: 0, includeHidden: true };
+const query = args.public ? { url: url.href, depth: numeric('depth',0,12), maxNodes:200, maxBytes:numeric('max-bytes',4096,150000), includeHidden:false, ...(args['variables-file'] ? {variablesFile:path.resolve(args['variables-file'])} : {}) } : { format:'debug', url: url.href, depth: 50, maxNodes: 500, offset: 0, includeHidden: true };
 const selection = parseNetworkSelection(query.url);
 const keys = dump.events.filter(e => e.kind === 'ws-open' && e.url === `wss://www.figma.com/api/multiplayer/${selection.fileKey}`).map(e => e.key);
 if (keys.length !== 1) throw new Error('Fixture must contain one selected-file multiplayer connection');
@@ -49,7 +57,7 @@ if (args['reuse-pairing']) {
   if (!match || Number(match[1]) < 1 || Number(match[1]) > 65535) throw new Error('Invalid pairing file');
   port = Number(match[1]); secret = match[2];
 }
-await save('config.json', { secret, port, workspace: path.join(runDirectory, 'workspace'), assets: path.join(runDirectory, 'assets') });
+await save('config.json', { secret, port, profile:!!args.profile, workspace: path.join(runDirectory, 'workspace'), assets: path.join(runDirectory, 'assets') });
 const trace = createWriteStream(path.join(runDirectory, 'samples.ndjson'), { mode: 0o600 });
 const traceLine = value => trace.write(JSON.stringify(value) + '\n');
 const started = performance.now(); let phase = 'startup', running = true, replay, observerErrors = 0;
@@ -104,9 +112,18 @@ const observer = (async () => {
 const stage = async (name, action) => {
   mark(name); const before = await metrics(`${name}-before`), at = elapsed();
   const result = await action(); const durationMs = elapsed() - at; const after = await metrics(`${name}-after`);
-  const value = { name, durationMs, before, after }; stages.push(value); return result;
+  const value = { name, durationMs, cpuUserMs: (after.cpu.user - before.cpu.user) / 1000, cpuSystemMs: (after.cpu.system - before.cpu.system) / 1000, before, after }; stages.push(value); return result;
 };
-let success = false, failure, captureResult, decodeResults = [];
+let success = false, failure, captureResult, decodeResults = [], pageMeasurements = [];
+async function readPage(info, pageQuery, label) {
+  const at = elapsed();
+  const response = await request('tools/call', { name: args.public ? 'get_design_context' : 'get_network_tree', arguments: args.public ? pageQuery : { ...pageQuery, snapshot: info.snapshot } });
+  if (response.isError || !response.content?.[0]?.text) throw new Error('MCP network decode failed');
+  const text = response.content[0].text, parsed = JSON.parse(text);
+  pageMeasurements.push({ label, durationMs:elapsed()-at, bytes:Buffer.byteLength(text), nodes:parsed.nodes.length, metrics:parsed.metrics, traversal:{ ...parsed.traversal, continuation:parsed.traversal.continuation ? '<present>' : null } });
+  if(args.public && Buffer.byteLength(text)>query.maxBytes)throw Error('Response byte budget exceeded');
+  return parsed;
+}
 try {
   const host = await ready; stages.push({ name: 'startup', durationMs: elapsed(), after: host.metrics });
   await request('initialize', { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'network-resource-probe', version: '1' } });
@@ -135,20 +152,38 @@ try {
   const info = await request('cache-status', {}, true);
   if (!(info.generations > info.incomplete)) throw new Error('Managed snapshot was not published');
   query.url = `https://www.figma.com/design/${info.snapshot.fileKey}/File?node-id=${args['node-id'] || '1:1'}`;
-  for (const name of ['cold-decode-request', 'repeat-decode-request']) {
+  for (const name of ['cold-decode-request', ...Array(warmup).fill('warmup-decode-request'), ...Array(warmRequests).fill('repeat-decode-request')]) {
     const result = await stage(name, async () => {
-      const response = await request('tools/call', { name: 'get_network_tree', arguments: { ...query, snapshot: info.snapshot } });
-      if (response.isError || !response.content?.[0]?.text) throw new Error('MCP network decode failed');
-      const parsed = JSON.parse(response.content[0].text);
+      const parsed = await readPage(info,query,name);
       return { documentRecords: parsed.documentRecords, returnedNodes: parsed.nodes.length, metrics: parsed.metrics };
     });
     decodeResults.push({ name, ...result });
+  }
+  if (args['all-pages']) {
+    if (!args.public) throw Error('--all-pages requires --public');
+    await stage('all-pages', async () => {
+      let continuation; const ids = new Set(); let offset = 0;
+      for (let page = 0; page < 10000; page++) {
+        const parsed = await readPage(info, { ...query, ...(continuation ? {continuation} : {}) }, 'all-pages');
+        for (const node of parsed.nodes) { if(ids.has(node.id))throw Error('Duplicate paginated node'); ids.add(node.id); }
+        continuation = parsed.traversal.continuation;
+        if (continuation === null) { if(ids.size!==parsed.traversal.eligibleRecords)throw Error('Incomplete traversal'); return; }
+        if (!continuation || parsed.traversal.nextOffset<=offset)throw Error('Pagination stalled');
+        offset=parsed.traversal.nextOffset;
+      }
+      throw Error('Pagination limit exceeded');
+    });
+  }
+  if (args['switch-node-id']) {
+    const other = new URL(query.url); other.searchParams.set('node-id',args['switch-node-id']);
+    await stage('switch-selection', () => readPage(info,{...query,url:other.href},'switch-selection'));
+    await stage('switch-back', () => readPage(info,query,'switch-back'));
   }
   await stage('idle-retained-selection', () => delay(idleMs));
   const released = await request('release-selection', {}, true);
   if (!released.released) throw new Error('Selection release failed');
   await stage('release-1s', () => delay(1000));
-  await stage('idle-after-release', () => delay(releaseMs));
+  await stage('idle-after-release', () => delay(Math.max(0, releaseMs - 1000)));
   success = true;
 } catch (error) { failure = error.message; }
 finally {
@@ -163,18 +198,19 @@ const gaps = samples.slice(1).map((s, i) => s.atMs - samples[i].atMs);
 const report = { version: 1, success, failure, date: new Date().toISOString(), runId: path.basename(runDirectory),
   mode: args.live ? 'live-capture-managed-disk-decode' : 'recorded-event-replay-managed-disk-decode',
   environment: { platform: process.platform, release: os.release(), arch: process.arch, node: process.version, cpu: os.cpus()[0]?.model, ramBytes: os.totalmem() },
-  fixture: { synthetic: !!args.synthetic, sha256: fixtureHash },
+  fixture: { synthetic: !!args.synthetic, sha256: fixtureHash }, query, warmup, warmRequests,
+  observer: { cpu: process.cpuUsage(observerCpuStart), memory: process.memoryUsage(), processPeakRssBytes: process.resourceUsage().maxRSS * 1024, scope: 'whole harness including preparation, orchestration and observer; ps/PowerShell CPU not included' },
   observerErrors, intervalRequestedMs: intervalMs, samples: samples.length, maximumSampleGapMs: gaps.length ? Math.max(...gaps) : null,
   maximumReadWindowMs: samples.length ? Math.max(...samples.map(s => s.windowMs)) : null,
   captureBoundaries, captureDurationMs: captureBoundaries.length === 2 ? captureBoundaries[1].atMs - captureBoundaries[0].atMs : null,
-  phases, stages, decodeResults, captureResult, mainMeasurements, workerMeasurements, replayMeasurements,
+  phases, stages, decodeResults, pageMeasurements, captureResult, mainMeasurements, workerMeasurements, replayMeasurements,
   accounting: summarizeSamples(samples, roles),
   phasePeaks: Object.fromEntries(phases.map(p => [p.phase, summarizeSamples(samples.filter(s => s.phase === p.phase), roles)])),
   limitations: ['Production decoder reads verified managed parts directly and builds temporary disk indices; no compatibility adapter is used.',
     'Replay runs production collector under Node with fake Chrome API and acknowledgement pacing; its RSS is not extension RAM or real network timing.',
     'Worker rss/maxRSS are process-wide and are never added to MCP RSS. arrayBuffers is a subset of external; neither is added to RSS.',
     'External sampling can miss peaks between samples; maxRSS is cumulative since process start, not per-phase.',
-    'No forced GC. Fresh process is not cold OS file cache. Repeated query still launches a fresh worker.',
+    'No forced GC. Fresh process is not cold OS file cache. Repeated managed query reuses the retained worker and verifies parts.',
     'Browser/PID attribution and CDP/browser-side overhead need a controlled live run; missing coverage is null, never zero. Budget is not accepted.'] };
 await save('report.json', report);
 console.log(JSON.stringify({ success, report: path.join(runDirectory, 'report.json'), budgetAccepted: false }));

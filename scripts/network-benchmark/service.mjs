@@ -4,16 +4,21 @@ import path from 'node:path';
 import { readFile, mkdir } from 'node:fs/promises';
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import { Bridge } from '../../dist/bridge.js';
-import { releaseNetworkSelection } from '../../dist/network-reader.js';
+import { stopNetworkSelection } from '../../dist/network-reader.js';
 import { NetworkStore } from '../../dist/network-store.js';
 import { AssetStore } from '../../dist/assets.js';
 import { createServer } from '../../dist/server.js';
 const config = JSON.parse(await readFile(process.argv[2], 'utf8'));
 await mkdir(config.workspace, { recursive: true });
 const cache = await NetworkStore.create(config.workspace);
+const partReads = { calls: 0, bytes: 0, durationMs: 0 };
+if (config.profile) {
+  const readPart = cache.readPart.bind(cache);
+  cache.readPart = async (...args) => { const start = performance.now(); try { const bytes = await readPart(...args); partReads.calls++; partReads.bytes += bytes.length; return bytes; } finally { partReads.durationMs += performance.now() - start; } };
+}
 const assets = await AssetStore.create(config.assets);
 const emit = value => { if (process.connected) process.send(value); };
-const metrics = stage => ({ stage, memory: process.memoryUsage(), cpu: process.cpuUsage(),
+const metrics = stage => ({ stage, ...(config.profile ? { partReads: { ...partReads } } : {}), memory: process.memoryUsage(), cpu: process.cpuUsage(),
   processPeakRssBytes: process.resourceUsage().maxRSS * 1024 });
 let completedCaptures = 0, completedSnapshot;
 const captureStore = { observe: id => cache.observe(id), setSelection: (...args) => cache.setSelection(...args), renewObservation: owner => cache.renewObservation(owner), applyLive: (...args) => cache.applyLive(...args), begin: async (...args) => {
@@ -38,7 +43,7 @@ process.on('message', async msg => {
     catch { emit({ id: msg.id, result: { error: 'Benchmark adapter failed' } }); }
   }
   if (msg.type === 'release-selection') {
-    try { await releaseNetworkSelection(); emit({ id: msg.id, result: { released: true } }); }
+    try { await stopNetworkSelection(); emit({ id: msg.id, result: { released: true } }); }
     catch { emit({ id: msg.id, result: { released: false } }); }
   }
   if (msg.type === 'cache-status') {
@@ -49,7 +54,7 @@ let closing = false;
 async function close() {
   if (closing) return; closing = true;
   emit({ type: 'final-metrics', ...metrics('shutdown') });
-  await bridge.close(); await handle.close(); await releaseNetworkSelection();
+  await bridge.close(); await handle.close(); await stopNetworkSelection();
   if (process.connected) process.disconnect();
 }
 process.stdin.once('end', () => void close());
