@@ -118,6 +118,12 @@ export function effectiveVariableNode(node: Value, bindings: ReturnType<typeof n
         const type=target==='color'?'COLOR':target==='visible'?'BOOLEAN':'FLOAT';
         value[target]=ref?.status==='resolved'&&ref.dataType===type?ref.value:undefined;
       }
+      // A solid color binding supplies RGBA. Wire paint.opacity already carries
+      // its alpha; replacing color alone would apply that alpha twice.
+      if (field !== 'effects' && item.type === 'SOLID' && item.colorVar && value.color) {
+        value.opacity = value.color.a;
+        value.color = {...value.color, a:1};
+      }
       for(const key of ['stops','stopsVar']) if(Array.isArray(item[key]))value[key]=item[key].map((stop:Value,j:number)=>{
         if(!stop.colorVar)return stop;
         const ref=refs.get(`${prefix}${field}[${i}].${key}[${j}].colorVar`);

@@ -262,3 +262,26 @@ for (const [name,extra] of [['unknown signal',{signalName:'unknown'}],['nodes in
  const next=await readStoredNetworkSnapshot(store,snapshot,{...query,maxNodes:1,continuation:page.traversal.continuation});
  assert.equal(next.freshness.revision,0);assert.equal(next.nodes[0].id,'1:3');
  });
+
+test('pending UI request accepts service packets and supported document updates without dropping observation',async t=>{
+ const {store,peer,bridge,sender}=await capture(t);
+ const incoming=once(peer,'message');
+ const ui=bridge.request('get_design_context',{});
+ const request=JSON.parse((await incoming)[0]);
+ // Cross both former lifetime caps with verified service traffic. UI selection
+ // emits presence messages throughout a long traversal, even without edits.
+ const pageBefore=await readStoredNetworkSnapshot(store,snapshot,{...query,maxNodes:1});
+ for(let i=0;i<140;i++) {
+   const ack=await sender.delta(encodeRecord(service(4+i,{signalPayload:'x'.repeat(65000)})));
+   assert.equal(ack.revision,i+1);
+ }
+ const pageAfter=await readStoredNetworkSnapshot(store,snapshot,{...query,maxNodes:1,continuation:pageBefore.traversal.continuation});
+ assert.equal(pageAfter.freshness.revision,0);
+ await sender.delta(encodeRecord(delta([{guid:guid(3),name:'updated during UI'}],144)));
+ peer.send(JSON.stringify({type:'response',id:request.id,result:{nodes:[]}}));
+ assert.deepEqual(await ui,{nodes:[]});
+ assert.equal(bridge.status.connected,true);
+ const page=await readStoredNetworkSnapshot(store,snapshot,query);
+ assert.equal(page.freshness.status,'observed');
+ assert.equal(page.nodes[1].name,'updated during UI');
+});

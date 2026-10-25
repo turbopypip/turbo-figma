@@ -11,6 +11,8 @@ export class Bridge {
   get fileKey(): string | undefined { return this.peer?.readyState === WebSocket.OPEN ? this.pairedFile : undefined; }
   private connectedAt: string | null = null;
   private disconnectedAt: string | null = null;
+  private lastDisconnect?: { code: number; reason: string };
+  private captureError?: string;
   private pending?: { id: string; finish: (error?: Error, value?: unknown) => void };
   private cacheBusy = false;
   private transfers = new Set<NetworkTransfer>();
@@ -31,13 +33,14 @@ export class Bridge {
       let transfer: NetworkTransfer | undefined;
       const timer = setTimeout(() => socket.terminate(), 3000);
       socket.on('error', () => {});
-      socket.on('close', () => {
+      socket.on('close', (code, reason) => {
         clearTimeout(timer);
         if (transfer) void transfer.close().finally(() => this.transfers.delete(transfer!));
         if (this.peer === socket) {
           this.peer = undefined;
           this.connectedAt = null;
           this.disconnectedAt = new Date().toISOString();
+          this.lastDisconnect = { code, reason: reason.toString().slice(0, 500) };
           this.pending?.finish(new Error('Figma browser extension disconnected. Reconnect the browser extension.'));
         }
       });
@@ -67,8 +70,11 @@ export class Bridge {
             await Promise.all([...this.transfers].map(previous => previous.close()));
             if (this.peer !== socket || socket.readyState !== WebSocket.OPEN) return;
             this.connectedAt = new Date().toISOString();
+            this.lastDisconnect = undefined;
+            this.captureError = undefined;
             if (this.captureStore) {
               transfer = new NetworkTransfer(this.captureStore, msg.fileKey, message => {
+                if ((message as {type?: string}).type === 'capture-error') this.captureError = (message as {error: string}).error;
                 if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message));
               }, () => socket.close(1008, 'Capture failed'), this.timeout);
               this.transfers.add(transfer);
@@ -119,6 +125,8 @@ export class Bridge {
       connected, busy, state: connected ? (busy ? 'busy' : 'connected') : 'disconnected',
       checkedAt: new Date().toISOString(), connectedAt: connected ? this.connectedAt : null,
       disconnectedAt: this.disconnectedAt,
+      ...(this.lastDisconnect ? {lastDisconnect: this.lastDisconnect} : {}),
+      ...(this.captureError ? {captureError: this.captureError} : {}),
       message: connected ? (busy ? 'Figma подключена, выполняется запрос.' : 'Расширение Figma подключено.')
         : 'Расширение Figma не подключено. Открой макет и нажми значок расширения; сохранённый ключ загрузится автоматически. Если вкладка подключения уже открыта, дождись восстановления связи или нажми «Подключить».',
       scope: 'Authenticated browser bridge connection only; Figma tab availability and export readiness are not checked.'

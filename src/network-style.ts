@@ -35,6 +35,7 @@ function paints(values: unknown, path: string, unresolved: string[]): Value[] | 
     if (p.stops?.length > 128) unresolved.push(`${path}[${i}].stopsLimit`);
     else if (p.stops) out.stops = p.stops.map((s:Value)=>({position:s.position,color:pick(s.color??{},['r','g','b','a'])}));
     if (p.transform) out.transform = pick(p.transform,['m00','m01','m02','m10','m11','m12']);
+    if (p.type === 'SOLID' && unit(p.opacity)) out.paintColor = rgba(p.color,p.opacity);
     const color = p.type === 'SOLID' && p.blendMode === 'NORMAL' && unit(p.opacity) ? rgba(p.color,p.opacity) : undefined;
     if (color) out.cssColor = color;
     if (p.visible !== false && (!color || p.visible !== true)) unresolved.push(`${path}[${i}].css`);
@@ -86,7 +87,16 @@ function textStyle(n: Value) {
   const metadata=rawMetadata.length<=256?rawMetadata:[];
   if(rawMetadata.length>256)unresolved.push('font.metadataLimit');
   if(data?.lines?.some((line:Value)=>line.lineType!=='PLAIN'||line.indentationLevel>0))unresolved.push('paragraph.listLayout');
+  // A single rendered font on uniform text is stronger evidence than the
+  // saved requested font (which can be substituted or overridden in Figma).
+  // Multiple fonts/mixed runs have no verified per-character metadata mapping.
+  const idsForFont=data?.characterStyleIDs;
+  const uniformBase=idsForFont===undefined || (Array.isArray(idsForFont) && idsForFont.length===characters?.length && idsForFont.every((id:number)=>id===0));
+  const renderedFont=n.derivedTextData?.fontMetaData && uniformBase && metadata.length===1 ? metadata[0].key : undefined;
+  const requestedFont=n.fontName;
+  if (typeof requestedFont?.family==='string' && typeof requestedFont?.style==='string' && typeof renderedFont?.family==='string' && typeof renderedFont?.style==='string' && (requestedFont.family!==renderedFont.family || requestedFont.style!==renderedFont.style)) n={...n,fontName:renderedFont};
   const base=typography(n,metadata,unresolved);
+  if(n.fontName!==requestedFont) {base.source.requestedFontName=requestedFont;base.source.fontNameProvenance='derivedTextData.fontMetaData';}
   const result: Value = {base,ranges:[],rangeUnit:'utf-16',unresolved};
   if (typeof characters !== 'string') {unresolved.push('text.characters');return result;}
   const ids=data?.characterStyleIDs;

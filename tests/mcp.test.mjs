@@ -36,6 +36,7 @@ test('real stdio MCP session: discovery, context, image, disk export, EOF cleanu
   const client = new Client({ name: 'integration-test', version: '1.0.0' });
   t.after(() => client.close()); await client.connect(transport);
   const { tools } = await client.listTools();
+  for(const name of ['get_design_context','get_network_tree']) assert.equal(tools.find(t=>t.name===name).inputSchema.properties.maxBytes.default,24000);
   assert.deepEqual(tools.map(t => t.name).sort(), ['export_assets', 'get_connection_status', 'get_design_context', 'get_network_tree', 'get_screenshot', 'get_selection']);
   const status = async () => JSON.parse((await client.callTool({name: 'get_connection_status', arguments: {}})).content[0].text);
   assert.equal((await status()).state, 'disconnected');
@@ -95,6 +96,8 @@ test('real stdio MCP session: discovery, context, image, disk export, EOF cleanu
   for (const [eventSequence, b] of payloads.entries()) await sender.append(Buffer.from(JSON.stringify({version:1,kind:'ws-received',session:'main',requestId:'1',eventSequence,opcode:2,payload:b.toString('base64')})+'\n'));
   await sender.finish({schemaReceived:true,joinStarted:true,joinEnded:true,receivedParts:payloads.length,droppedParts:0,sequenceComplete:true});
   const primary = await client.callTool({name:'get_design_context',arguments:primaryArgs});
+  assert.ok(primary.content[0].text.startsWith('{"traversal":'));
+  assert.ok(Buffer.byteLength(primary.content[0].text)<=24000);
   assert.equal(primary.isError, undefined, JSON.stringify(primary));
   const first = JSON.parse(primary.content[0].text);
   assert.equal(first.adapter, 'figma-network-snapshot'); assert.equal(first.freshness.status, 'observed');

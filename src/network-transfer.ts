@@ -15,7 +15,7 @@ const command = z.discriminatedUnion('action', [
     data: z.string().min(4).max(4 * Math.ceil(TRANSFER_PART_BYTES / 3)) }).strict(),
   z.object({ ...common, action: z.literal('finish'), evidence: evidenceSchema }).strict(),
   z.object({ ...common, action: z.literal('heartbeat') }).strict(),
-  z.object({ ...common, action: z.literal('delta'), sequence: z.number().int().min(0).max(LIVE_LIMITS.batches - 1),
+  z.object({ ...common, action: z.literal('delta'), sequence: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER - 1),
     data: z.string().min(4).max(4 * Math.ceil(LIVE_LIMITS.recordBytes / 3)) }).strict(),
 ]);
 const liveRecord = z.object({ version: z.literal(1), kind: z.enum(['ws-received', 'ws-sent']), session: z.string().min(1).max(256),
@@ -44,9 +44,15 @@ export class NetworkTransfer {
   receive(value: unknown, blocked: boolean) {
     if (this.closed) return;
     const parsed = command.safeParse(value);
-    if (!parsed.success || this.work) { this.fail('Invalid capture command or queue overflow'); return; }
+    if (!parsed.success) {
+      this.fail('Invalid capture command: ' + parsed.error.issues.map(issue => `${issue.path.join('.')}: ${issue.code}`).join('; '));
+      return;
+    }
+    if (this.work) { this.fail('Capture queue overflow: previous command is still pending'); return; }
     const msg = parsed.data;
-    if ((blocked && msg.action !== 'heartbeat') || !this.fileKey || msg.snapshot.fileKey !== this.fileKey) { this.fail('Capture busy or file mismatch'); return; }
+    // Observation traffic must continue during UI work. applyLive still checks
+    // the reader/index lease and rejects unsupported or concurrent mutations.
+    if ((blocked && !['heartbeat', 'delta'].includes(msg.action)) || !this.fileKey || msg.snapshot.fileKey !== this.fileKey) { this.fail('Capture busy or file mismatch'); return; }
     if (msg.action === 'begin' ? !!this.snapshot : !this.snapshot ||
       JSON.stringify(msg.snapshot) !== JSON.stringify(this.snapshot)) { this.fail('Capture session mismatch'); return; }
     if (msg.action === 'begin') this.snapshot = msg.snapshot;
@@ -70,12 +76,15 @@ export class NetworkTransfer {
         } else if (msg.action === 'delta') {
           if (!this.observation || !this.cursor || msg.sequence !== this.revision) throw new Error('STALE: live sequence mismatch');
           const bytes = Buffer.from(msg.data, 'base64');
-          if (!bytes.length || bytes.length > LIVE_LIMITS.recordBytes || bytes.toString('base64') !== msg.data || (this.liveBytes += bytes.length) > LIVE_LIMITS.bytes) throw new Error('STALE: live record budget exceeded');
+          if (!bytes.length || bytes.length > LIVE_LIMITS.recordBytes || bytes.toString('base64') !== msg.data) throw new Error('STALE: invalid live record size or encoding');
           const record = liveRecord.parse(JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)));
           if (record.eventSequence !== this.cursor.eventSequence + this.revision || JSON.stringify([record.session, record.requestId]) !== this.cursor.socket) throw new Error('STALE: live event gap or foreign stream');
           if (this.inspector!.isServiceMessage(record.payload, record.kind)) this.store.renewObservation(this.observation);
           else {
             if (record.kind === 'ws-sent') throw new Error('Unsupported outgoing document message');
+            // Service traffic is validated and discarded, not retained in the
+            // document index. Only mutations consume the cumulative live budget.
+            if ((this.liveBytes += bytes.length) > LIVE_LIMITS.bytes) throw new Error('STALE: live document byte budget exceeded');
             await this.store.applyLive(msg.snapshot, this.observation, record.payload);
           }
           this.revision++;

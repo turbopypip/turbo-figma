@@ -9,7 +9,7 @@ import {mkdir,mkdtemp,rm} from 'node:fs/promises';
 import path from 'node:path';
 import {resolveNativeVariable,inheritVariableModes} from '../dist/network-variable-resolver.js';
 import {DiskNetworkSnapshot} from '../dist/network-disk.js';
-import {nativeVariableBindings} from '../dist/network-variables.js';
+import {nativeVariableBindings,effectiveVariableNode} from '../dist/network-variables.js';
 const g=n=>({sessionID:1,localID:n});
 const alias=n=>({dataType:'ALIAS',value:{alias:{guid:g(n)}}});
 const literal=(value,type='FLOAT')=>({dataType:type,value:{[type==='FLOAT'?'floatValue':type==='BOOLEAN'?'boolValue':'textValue']:value}});
@@ -179,4 +179,15 @@ test('page and frame modes flow through expanded components, with a component ov
  const result=model.query(q),refs=result.nodes.flatMap(n=>n.style.nativeBindings.references);
  assert.deepEqual(Object.fromEntries(refs.map(r=>[r.modeSourceNodeId,r.value])),{'1:200':16,'1:203':8});
  assert.deepEqual(model.query(q).nodes,result.nodes);
+});
+
+test('solid color variable alpha replaces captured paint alpha exactly once, including text overrides',()=>{
+ const paint={type:'SOLID',visible:true,blendMode:'NORMAL',opacity:.36,color:{r:1,g:0,b:0,a:1},colorVar:alias(1)};
+ const n={type:'FRAME',opacity:.5,fillPaints:[paint],strokePaints:[paint],textData:{styleOverrideTable:[{styleID:2,fillPaints:[paint]}]}};
+ const resolve=()=>({status:'resolved',dataType:'COLOR',value:{r:1,g:0,b:0,a:.36}});
+ const projected=effectiveVariableNode(n,nativeVariableBindings(n,resolve));
+ for(const p of [projected.fillPaints[0],projected.strokePaints[0],projected.textData.styleOverrideTable[0].fillPaints[0]]) {assert.equal(p.color.a,1);assert.equal(p.opacity,.36);}
+ const style=networkStyle(n,resolve);assert.equal(style.css['background-color'],'rgba(255, 0, 0, 0.36)');assert.equal(style.css.opacity,'0.5');
+ assert.equal(n.fillPaints[0].color.a,1);
+ assert.equal(networkStyle(n,()=>({...resolve(),value:{r:1,g:0,b:0,a:0}})).css['background-color'],'rgba(255, 0, 0, 0)');
 });

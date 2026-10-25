@@ -141,3 +141,23 @@ test('styled context survives replay/cache/pagination within UTF-8 byte budget, 
  await assert.rejects(readStoredNetworkSnapshot(store,identity,query),/UI-kit limit/);
 
 });
+
+test('uniform rendered font metadata supersedes the requested font without guessing mixed-run substitutions',()=>{
+ const n={...base,fontName:{family:'Missing Font',style:'Bold'},textData:{characters:'2'},derivedTextData:{fontMetaData:[{key:font,fontWeight:400,fontStyle:'NORMAL'}]}};
+ const r=networkStyle(n);
+ assert.equal(r.css['font-family'],'"Sample"');assert.equal(r.css['font-weight'],'400');
+ assert.deepEqual(r.text.base.source.requestedFontName,n.fontName);
+ assert.equal(n.fontName.family,'Missing Font');
+ const mixed=networkStyle({...n,textData:base.textData});
+ assert.equal(mixed.text.base.source.fontName.family,'Missing Font');
+ const ambiguous=networkStyle({...n,derivedTextData:base.derivedTextData});
+ assert.equal(ambiguous.text.base.source.fontName.family,'Missing Font');
+ assert.equal(networkStyle({...n,fontName:{family:null,style:null}}).css['font-family'],undefined);
+});
+
+test('non-normal blend exposes paint color without presenting it as a CSS background',()=>{
+ const r=networkStyle({type:'FRAME',fillPaints:[paint({blendMode:'LINEAR_BURN'})]});
+ assert.equal(r.fills[0].paintColor,'rgba(255, 0, 0, 1)');
+ assert.equal(r.fills[0].cssColor,undefined);assert.equal(r.css['background-color'],undefined);
+ assert.ok(r.unresolved.includes('fills.composition'));
+});

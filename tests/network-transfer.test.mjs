@@ -78,6 +78,23 @@ test('duplicate and missing parts cannot be committed', async t => {
   assert.equal((await request(peer, 'part', {sequence:0,data:'AQ=='})).type, 'capture-error');
   await assert.rejects(store.readManifest(snapshot));
 });
+
+test('invalid transport sequence remains diagnosable after disconnect', async t => {
+  const {peer, bridge, connect} = await fixture(t);
+  await request(peer, 'begin');
+  const closed = once(peer, 'close');
+  const result = await request(peer, 'delta', {sequence: Number.MAX_SAFE_INTEGER, data: 'AQ=='});
+  assert.match(result.error, /^Invalid capture command: sequence:/);
+  assert.doesNotMatch(result.error, /queue overflow/);
+  await closed;
+  await wait(() => !bridge.status.connected && bridge.status.lastDisconnect);
+  assert.equal(bridge.status.captureError, result.error);
+  assert.ok([1008, 4008].includes(bridge.status.lastDisconnect.code));
+  const next = await connect();
+  assert.equal(bridge.status.captureError, undefined);
+  assert.equal(bridge.status.lastDisconnect, undefined);
+  next.close();
+});
 for (const [name, value] of [['count mismatch', evidence(2)], ['missing join', {...evidence(1),joinEnded:false}], ['dropped parts', {...evidence(1),droppedParts:1}]]) {
   test(`finish rejects ${name}`, async t => {
     const { store, peer } = await fixture(t);
