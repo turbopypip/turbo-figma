@@ -12,5 +12,19 @@
 <button id="submit" type="submit">Подключить</button>
 <button id="disconnect" type="button">Отключить</button>
 </form>
+<section class="cache" aria-label="Сетевой захват">
+<p id="capture-status" role="status">Сетевой захват выключен.</p>
+<button id="capture-start" type="button" disabled>Начать сетевой захват</button>
+<button id="capture-reload" type="button" disabled>Перезагрузить и захватить</button>
+<button id="capture-stop" type="button" disabled>Остановить захват</button>
+<p class="hint">Требуется Chrome 125+ и разрешение debugger. Chrome покажет панель отладки. Записываются входящие multiplayer-сообщения подключённого файла, включая worker.</p>
+<p class="hint">«Начать сетевой захват» не перезагружает вкладку и может пропустить начало загрузки. «Перезагрузить и захватить» перезагрузит текущую подключённую вкладку Figma. Готовность проверяется по схеме и завершению начального потока. Остановка прерывает соединение с MCP; для нового захвата подключись заново.</p>
+</section>
+<section class="cache" aria-label="Кэш макетов">
+<p id="cache-status" role="status">Кэш макетов: подключись к MCP, чтобы узнать размер.</p>
+<button id="cache-info" type="button" disabled>Размер кэша</button>
+<button id="cache-clear" type="button" disabled>Очистить весь кэш</button>
+<p class="hint">Удаляет локальные данные всех макетов. Настройки, ключ и экспортированные изображения сохраняются.</p>
+</section>
 <div class="secondary"><a href="https://github.com/turbopypip/figma-kilo-mcp#readme" target="_blank" rel="noopener noreferrer">Информация ↗</a><button id="forget" type="button">Забыть ключ</button></div>
-</main><script type="module" src="popup.js"></script></html>
+</main><script type="module" src="popup.js"></script><script type="module" src="network-popup.js"></script></html>

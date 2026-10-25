@@ -4,6 +4,8 @@ import { z } from 'zod';
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import { Bridge } from './bridge.js';
 import { AssetStore } from './assets.js';
+import path from 'node:path';
+import { NetworkStore } from './network-store.js';
 import { createServer } from './server.js';
 
 const configSchema = z.object({ secret: z.string().min(32).max(256),
@@ -13,10 +15,18 @@ async function main() {
   const configPath = process.env.FIGMA_KILO_CONFIG || fileURLToPath(new URL('../.local/config.json', import.meta.url));
   const config = configSchema.parse(JSON.parse(await readFile(configPath, 'utf8')));
   const assets = await AssetStore.create(config.assetDirectory);
-  const bridge = new Bridge(config.secret, config.port);
+  // Resolve against this installation, never against Kilo's working directory.
+  const cache = await NetworkStore.create(fileURLToPath(new URL('../', import.meta.url)));
+  if (assets.root === cache.root || assets.root.startsWith(cache.root + path.sep)) throw new Error('Asset directory must be outside the managed cache');
+  const bridge = new Bridge(config.secret, config.port, 30_000, async action => {
+    if (action === 'cache-clear') return cache.clean('all');
+    return cache.info();
+  }, cache);
   try { await bridge.ready; }
   catch { throw new Error(`Cannot listen on 127.0.0.1:${config.port}. Close the other MCP session or change the port in the server and extension.`); }
-  const handle = serveStdio(() => createServer(bridge, assets, config.variablesFile), { onerror: () => console.error('MCP transport error') });
+  try { await cache.clean('prune'); }
+  catch (error) { await bridge.close(); throw error; }
+  const handle = serveStdio(() => createServer(bridge, assets, config.variablesFile, cache), { onerror: () => console.error('MCP transport error') });
   let closing = false;
   const close = async () => {
     if (closing) return;

@@ -1,0 +1,10 @@
+{
+  "manifest_version": 3,
+  "minimum_chrome_version": "125",
+  "name": "Figma Network Probe",
+  "version": "0.2.0",
+  "description": "Local diagnostic capture for one explicitly selected Figma tab.",
+  "permissions": ["activeTab", "debugger", "storage", "unlimitedStorage"],
+  "background": { "service_worker": "background.js" },
+  "action": { "default_popup": "popup.html" }
+}

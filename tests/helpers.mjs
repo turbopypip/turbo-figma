@@ -19,6 +19,7 @@ export async function pair(port, secret, respond) {
   if (JSON.parse(raw).type !== 'ready') throw new Error('Pair failed');
   if (respond) ws.on('message', async raw => {
     const msg = JSON.parse(raw);
+    if (msg.type !== 'request') return;
     let value;
     try { value = { result: await respond(msg.method, msg.params) }; }
     catch (error) { value = { error: error.message }; }

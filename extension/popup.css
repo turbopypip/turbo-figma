@@ -7,3 +7,7 @@ button { padding: 8px 12px; margin: 4px 4px 0 0; }
 .secondary { display: flex; align-items: center; gap: 16px; margin-top: 12px; }
 .secondary button { margin: 0; font-size: 12px; }
 #target { font-size: 13px; overflow-wrap: anywhere; }
+
+.cache { margin-top: 16px; padding-top: 12px; border-top: 1px solid #8885; }
+.cache p { margin: 0 0 8px; font-size: 13px; }
+.cache .hint { margin-top: 8px; font-size: 12px; opacity: .8; }

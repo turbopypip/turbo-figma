@@ -1,0 +1,464 @@
+{
+  "date": "2026-10-25T08:55:14.109Z",
+  "runId": "pipeline-VSAy4EZMXVvX",
+  "mode": "live-capture-adapter-legacy-decode",
+  "environment": {
+    "platform": "darwin",
+    "release": "24.6.0",
+    "arch": "arm64",
+    "node": "v20.12.2",
+    "cpu": "Apple M1",
+    "ramBytes": 8589934592
+  },
+  "capturedProbeSha256": "f34f5bfd4d0b1b32da7549b948625fcabc306d6f01b6d9511535c38e89e1aa8f",
+  "captureDurationMs": 7529.821709,
+  "captureResult": {
+    "events": 7,
+    "bytes": 4677829
+  },
+  "accounting": {
+    "byRole": {
+      "mcp": {
+        "pid": 20100,
+        "samples": 1401,
+        "sampledPeakRssBytes": 331579392
+      },
+      "extension-1": {
+        "pid": 71862,
+        "samples": 1401,
+        "sampledPeakRssBytes": 117620736
+      }
+    },
+    "sampledMcpPlusSelectedExtensionProcessesBytes": 406110208,
+    "fullImplementationPeakBytes": null,
+    "budgetAccepted": false,
+    "reason": "Sampling misses short peaks; selected browser PIDs do not prove complete extension/CDP attribution; production managed-cache decoder is not connected yet; benchmark uses a compatibility adapter."
+  },
+  "stages": [
+    {
+      "name": "startup",
+      "durationMs": 193.30575,
+      "after": {
+        "stage": "ready",
+        "memory": {
+          "rss": 64733184,
+          "heapTotal": 31866880,
+          "heapUsed": 15709840,
+          "external": 3405943,
+          "arrayBuffers": 734791
+        },
+        "cpu": {
+          "user": 166421,
+          "system": 34273
+        },
+        "processPeakRssBytes": 64733184
+      }
+    },
+    {
+      "name": "idle-before",
+      "durationMs": 1000.012708,
+      "before": {
+        "stage": "idle-before-before",
+        "memory": {
+          "rss": 66617344,
+          "heapTotal": 32391168,
+          "heapUsed": 16128864,
+          "external": 2691841,
+          "arrayBuffers": 22674
+        },
+        "cpu": {
+          "user": 189937,
+          "system": 35119
+        },
+        "processPeakRssBytes": 66617344
+      },
+      "after": {
+        "stage": "idle-before-after",
+        "memory": {
+          "rss": 61243392,
+          "heapTotal": 32391168,
+          "heapUsed": 16132792,
+          "external": 2691895,
+          "arrayBuffers": 22728
+        },
+        "cpu": {
+          "user": 190101,
+          "system": 35183
+        },
+        "processPeakRssBytes": 66617344
+      }
+    },
+    {
+      "name": "live-setup-and-capture",
+      "durationMs": 25661.283499999998,
+      "before": {
+        "stage": "live-setup-and-capture-before",
+        "memory": {
+          "rss": 61243392,
+          "heapTotal": 32391168,
+          "heapUsed": 16136744,
+          "external": 2691961,
+          "arrayBuffers": 22794
+        },
+        "cpu": {
+          "user": 190157,
+          "system": 35197
+        },
+        "processPeakRssBytes": 66617344
+      },
+      "after": {
+        "stage": "live-setup-and-capture-after",
+        "memory": {
+          "rss": 46235648,
+          "heapTotal": 41533440,
+          "heapUsed": 23548904,
+          "external": 56518893,
+          "arrayBuffers": 49181795
+        },
+        "cpu": {
+          "user": 1649616,
+          "system": 195843
+        },
+        "processPeakRssBytes": 164970496
+      }
+    },
+    {
+      "name": "benchmark-probe-adapter",
+      "durationMs": 98.15491699999984,
+      "before": {
+        "stage": "benchmark-probe-adapter-before",
+        "memory": {
+          "rss": 46465024,
+          "heapTotal": 41533440,
+          "heapUsed": 23568736,
+          "external": 56518993,
+          "arrayBuffers": 49181895
+        },
+        "cpu": {
+          "user": 1649819,
+          "system": 195900
+        },
+        "processPeakRssBytes": 164970496
+      },
+      "after": {
+        "stage": "benchmark-probe-adapter-after",
+        "memory": {
+          "rss": 82821120,
+          "heapTotal": 60047360,
+          "heapUsed": 24249208,
+          "external": 7391713,
+          "arrayBuffers": 4688335
+        },
+        "cpu": {
+          "user": 1741356,
+          "system": 239148
+        },
+        "processPeakRssBytes": 164970496
+      }
+    },
+    {
+      "name": "cold-decode-request",
+      "durationMs": 2031.3839999999982,
+      "before": {
+        "stage": "cold-decode-request-before",
+        "memory": {
+          "rss": 82821120,
+          "heapTotal": 60047360,
+          "heapUsed": 24287816,
+          "external": 7391777,
+          "arrayBuffers": 4688399
+        },
+        "cpu": {
+          "user": 1741466,
+          "system": 239160
+        },
+        "processPeakRssBytes": 164970496
+      },
+      "after": {
+        "stage": "cold-decode-request-after",
+        "memory": {
+          "rss": 82051072,
+          "heapTotal": 60473344,
+          "heapUsed": 26415392,
+          "external": 7395499,
+          "arrayBuffers": 4689709
+        },
+        "cpu": {
+          "user": 4444950,
+          "system": 527883
+        },
+        "processPeakRssBytes": 273776640
+      }
+    },
+    {
+      "name": "repeat-decode-request",
+      "durationMs": 1126.0883749999994,
+      "before": {
+        "stage": "repeat-decode-request-before",
+        "memory": {
+          "rss": 82083840,
+          "heapTotal": 60473344,
+          "heapUsed": 26419648,
+          "external": 7395565,
+          "arrayBuffers": 4689775
+        },
+        "cpu": {
+          "user": 4445025,
+          "system": 527910
+        },
+        "processPeakRssBytes": 273776640
+      },
+      "after": {
+        "stage": "repeat-decode-request-after",
+        "memory": {
+          "rss": 133447680,
+          "heapTotal": 60899328,
+          "heapUsed": 27736896,
+          "external": 7396856,
+          "arrayBuffers": 4691066
+        },
+        "cpu": {
+          "user": 6486355,
+          "system": 795891
+        },
+        "processPeakRssBytes": 336609280
+      }
+    },
+    {
+      "name": "release-1s",
+      "durationMs": 1000.7019169999985,
+      "before": {
+        "stage": "release-1s-before",
+        "memory": {
+          "rss": 133447680,
+          "heapTotal": 60899328,
+          "heapUsed": 27741128,
+          "external": 7396911,
+          "arrayBuffers": 4691121
+        },
+        "cpu": {
+          "user": 6486400,
+          "system": 795905
+        },
+        "processPeakRssBytes": 336609280
+      },
+      "after": {
+        "stage": "release-1s-after",
+        "memory": {
+          "rss": 133545984,
+          "heapTotal": 60899328,
+          "heapUsed": 27745824,
+          "external": 7396965,
+          "arrayBuffers": 4691175
+        },
+        "cpu": {
+          "user": 6486956,
+          "system": 796114
+        },
+        "processPeakRssBytes": 336609280
+      }
+    },
+    {
+      "name": "idle-after-release",
+      "durationMs": 10000.892792000002,
+      "before": {
+        "stage": "idle-after-release-before",
+        "memory": {
+          "rss": 133562368,
+          "heapTotal": 60899328,
+          "heapUsed": 27750064,
+          "external": 7397028,
+          "arrayBuffers": 4691238
+        },
+        "cpu": {
+          "user": 6487234,
+          "system": 796149
+        },
+        "processPeakRssBytes": 336609280
+      },
+      "after": {
+        "stage": "idle-after-release-after",
+        "memory": {
+          "rss": 37797888,
+          "heapTotal": 16924672,
+          "heapUsed": 14872696,
+          "external": 2733523,
+          "arrayBuffers": 27733
+        },
+        "cpu": {
+          "user": 6527294,
+          "system": 812331
+        },
+        "processPeakRssBytes": 336609280
+      }
+    }
+  ],
+  "decodeResults": [
+    {
+      "name": "cold-decode-request",
+      "documentRecords": 45440,
+      "returnedNodes": 118,
+      "metrics": {
+        "loadDecodeIndexMs": 1912,
+        "queryMs": 3,
+        "workerHeapUsedMiB": 171
+      }
+    },
+    {
+      "name": "repeat-decode-request",
+      "documentRecords": 45440,
+      "returnedNodes": 118,
+      "metrics": {
+        "loadDecodeIndexMs": 1082,
+        "queryMs": 2,
+        "workerHeapUsedMiB": 171
+      }
+    }
+  ],
+  "workerMeasurements": [
+    {
+      "atMs": 27058.409083,
+      "phase": "cold-decode-request",
+      "stage": "worker-start",
+      "elapsedMs": 0.022084000000177184,
+      "memory": {
+        "rss": 93405184,
+        "heapTotal": 9732096,
+        "heapUsed": 5947648,
+        "external": 3112474,
+        "arrayBuffers": 77798
+      },
+      "processPeakRssBytes": 164970496
+    },
+    {
+      "atMs": 27085.708457999997,
+      "phase": "cold-decode-request",
+      "stage": "json-parsed",
+      "elapsedMs": 27.462917000000743,
+      "memory": {
+        "rss": 108953600,
+        "heapTotal": 28344320,
+        "heapUsed": 19692312,
+        "external": 3572170,
+        "arrayBuffers": 537454
+      },
+      "processPeakRssBytes": 164970496
+    },
+    {
+      "atMs": 28899.850458,
+      "phase": "cold-decode-request",
+      "stage": "decoded",
+      "elapsedMs": 1839.7360840000001,
+      "memory": {
+        "rss": 269713408,
+        "heapTotal": 195018752,
+        "heapUsed": 170435664,
+        "external": 46628338,
+        "arrayBuffers": 43626197
+      },
+      "processPeakRssBytes": 269713408
+    },
+    {
+      "atMs": 28970.098792,
+      "phase": "cold-decode-request",
+      "stage": "indexed",
+      "elapsedMs": 1912.2942089999997,
+      "memory": {
+        "rss": 267304960,
+        "heapTotal": 205701120,
+        "heapUsed": 178284272,
+        "external": 46623774,
+        "arrayBuffers": 43621633
+      },
+      "processPeakRssBytes": 273776640
+    },
+    {
+      "atMs": 28972.656667,
+      "phase": "cold-decode-request",
+      "stage": "queried",
+      "elapsedMs": 1914.9990419999995,
+      "memory": {
+        "rss": 267386880,
+        "heapTotal": 205701120,
+        "heapUsed": 178946704,
+        "external": 46623774,
+        "arrayBuffers": 43621633
+      },
+      "processPeakRssBytes": 273776640
+    },
+    {
+      "atMs": 29029.013791999998,
+      "phase": "repeat-decode-request",
+      "stage": "worker-start",
+      "elapsedMs": 0.02108299999963492,
+      "memory": {
+        "rss": 90685440,
+        "heapTotal": 9732096,
+        "heapUsed": 5967928,
+        "external": 3112474,
+        "arrayBuffers": 77798
+      },
+      "processPeakRssBytes": 273776640
+    },
+    {
+      "atMs": 29035.356583,
+      "phase": "repeat-decode-request",
+      "stage": "json-parsed",
+      "elapsedMs": 6.565749999997934,
+      "memory": {
+        "rss": 105873408,
+        "heapTotal": 29392896,
+        "heapUsed": 19749352,
+        "external": 3572170,
+        "arrayBuffers": 537454
+      },
+      "processPeakRssBytes": 273776640
+    },
+    {
+      "atMs": 30076.959667,
+      "phase": "repeat-decode-request",
+      "stage": "decoded",
+      "elapsedMs": 1047.8833749999976,
+      "memory": {
+        "rss": 325238784,
+        "heapTotal": 194232320,
+        "heapUsed": 170500584,
+        "external": 46628338,
+        "arrayBuffers": 43626197
+      },
+      "processPeakRssBytes": 325320704
+    },
+    {
+      "atMs": 30111.38525,
+      "phase": "repeat-decode-request",
+      "stage": "indexed",
+      "elapsedMs": 1082.448708,
+      "memory": {
+        "rss": 336216064,
+        "heapTotal": 205176832,
+        "heapUsed": 178747240,
+        "external": 46623774,
+        "arrayBuffers": 43621633
+      },
+      "processPeakRssBytes": 336216064
+    },
+    {
+      "atMs": 30113.143167,
+      "phase": "repeat-decode-request",
+      "stage": "queried",
+      "elapsedMs": 1084.4471249999988,
+      "memory": {
+        "rss": 336248832,
+        "heapTotal": 205176832,
+        "heapUsed": 179394128,
+        "external": 46623774,
+        "arrayBuffers": 43621633
+      },
+      "processPeakRssBytes": 336248832
+    }
+  ],
+  "samples": 1401,
+  "observerErrors": 0,
+  "maximumSampleGapMs": 273.9126670000005,
+  "maximumReadWindowMs": 249.57195800000045
+}

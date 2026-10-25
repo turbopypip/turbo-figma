@@ -81,9 +81,10 @@ test('export waits without reading clipboard while Figma is unfocused', async ()
   assert.equal(calls.read, 0);
 });
 
-test('extension grants only active-tab scripting and explicit clipboard access', async () => {
+test('extension declares debugger for capture without adding broad host permissions', async () => {
   const manifest = JSON.parse(await readFile('extension/manifest.json', 'utf8'));
-  assert.deepEqual(manifest.permissions.sort(), ['activeTab', 'alarms', 'clipboardRead', 'clipboardWrite', 'scripting', 'storage']);
+  assert.deepEqual(manifest.permissions.sort(), ['activeTab', 'alarms', 'clipboardRead', 'clipboardWrite', 'debugger', 'scripting', 'storage']);
+  assert.equal(manifest.minimum_chrome_version, '125');
   assert.equal(manifest.host_permissions, undefined);
   assert.equal(manifest.content_scripts, undefined);
 });

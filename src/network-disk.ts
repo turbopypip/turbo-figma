@@ -1,0 +1,163 @@
+import { openSync, closeSync, readSync, writeSync, ftruncateSync } from 'node:fs';
+import { join } from 'node:path';
+import { nodeFields, parseNetworkSelection, safeId, type NetworkQuery } from './network.js';
+const SLOTS = 524288, SLOT_BYTES = 48, EDGE_BYTES = 24;
+export const DISK_LIMITS = { nodes: 200000, nodeBytes: 1024 * 1024, totalBytes: 512 * 1024 * 1024,
+  siblings: 10000, siblingBytes: 2 * 1024 * 1024 } as const;
+function write(fd: number, data: Buffer, position: number) {
+  let offset = 0;
+  while (offset < data.length) {
+    const n = writeSync(fd, data, offset, data.length - offset, position + offset);
+    if (!n) throw new Error('Incomplete disk index write');
+    offset += n;
+  }
+}
+function read(fd: number, size: number, position: number) {
+  const data = Buffer.alloc(size);
+  let offset = 0;
+  while (offset < size) {
+    const n = readSync(fd, data, offset, size - offset, position + offset);
+    if (!n) throw new Error('Truncated disk index');
+    offset += n;
+  }
+  return data;
+}
+/** An on-disk hash table + node log + linked child edges; no document map in RAM. */
+export class DiskNetworkSnapshot {
+  private fds: number[] = [];
+  private log = 0;
+  private table = 0;
+  private edges = 0;
+  private bytes = 0;
+  private edgeCount = 0;
+  private slots = 0;
+  private count = 0;
+  private started = false;
+  private ended = false;
+  private batchNodes = 0;
+  private batches = 0;
+  private live = 0;
+  constructor(readonly fileKey: string, directory: string) {
+    try {
+      for (const name of ['nodes.bin', 'index.bin', 'edges.bin']) this.fds.push(openSync(join(directory, name), 'wx+', 0o600));
+      [this.log, this.table, this.edges] = this.fds;
+      ftruncateSync(this.table, SLOTS * SLOT_BYTES);
+    } catch (error) { this.close(); throw error; }
+  }
+  close() { for (const fd of this.fds.splice(0)) closeSync(fd); }
+  private slot(id: string, create = false): { buffer: Buffer; offset: number } | undefined {
+    const [session, local] = id.split(':').map(Number);
+    let hash = 2166136261;
+    for (const c of id) hash = Math.imul(hash ^ c.charCodeAt(0), 16777619) >>> 0;
+    for (let i = 0; i < 4096; i++) {
+      const offset = ((hash + i) % SLOTS) * SLOT_BYTES, buffer = read(this.table, SLOT_BYTES, offset);
+      if (!buffer[0]) {
+        if (!create) return;
+        if (++this.slots > DISK_LIMITS.nodes * 2) throw new Error('Disk index identity limit exceeded');
+        buffer[0] = 1; buffer.writeDoubleLE(session, 8); buffer.writeDoubleLE(local, 16);
+        write(this.table, buffer, offset); return { buffer, offset };
+      }
+      if (buffer.readDoubleLE(8) === session && buffer.readDoubleLE(16) === local) return { buffer, offset };
+    }
+    throw new Error('Disk index capacity exceeded');
+  }
+  acceptNode(n: Record<string, any>) {
+    if (!this.started) throw new Error('Node batch before JOIN_START');
+    this.batchNodes++;
+    if (this.ended) return;
+    if (n.phase !== 'CREATED') throw new Error('Initial batch contains non-CREATED change');
+    if (++this.count > DISK_LIMITS.nodes) throw new Error('Node limit exceeded');
+    const id = safeId(n.guid), slot = this.slot(id, true)!;
+    if (slot.buffer.readUInt32LE(32)) throw new Error('Duplicate node');
+    const kept: Record<string, any> = {};
+    for (const field of nodeFields) if (field !== 'symbolData' && n[field] !== undefined) kept[field] = n[field];
+    if (n.type === 'INSTANCE') kept.instanceUnresolved = true;
+    const data = Buffer.from(JSON.stringify(kept));
+    if (data.length > DISK_LIMITS.nodeBytes || this.bytes + data.length > DISK_LIMITS.totalBytes) throw new Error('Decoded node/disk size limit exceeded');
+    slot.buffer.writeDoubleLE(this.bytes, 24); slot.buffer.writeUInt32LE(data.length, 32);
+    write(this.log, data, this.bytes); write(this.table, slot.buffer, slot.offset); this.bytes += data.length;
+    if (n.parentIndex) {
+      const parent = safeId(n.parentIndex.guid);
+      if (typeof n.parentIndex.position !== 'string') throw new Error('Invalid sibling position');
+      const p = this.slot(parent, true)!, edge = Buffer.alloc(EDGE_BYTES);
+      edge.writeDoubleLE(n.guid.sessionID); edge.writeDoubleLE(n.guid.localID, 8); edge.writeUInt32LE(p.buffer.readUInt32LE(36), 16);
+      write(this.edges, edge, this.edgeCount++ * EDGE_BYTES);
+      p.buffer.writeUInt32LE(this.edgeCount, 36); p.buffer.writeUInt32LE(p.buffer.readUInt32LE(40) + 1, 40);
+      write(this.table, p.buffer, p.offset);
+    }
+  }
+  acceptMessage(message: Record<string, any>) {
+    if (message.type !== 'NODE_CHANGES' && this.batchNodes) throw new Error('Nodes outside initial node batch');
+    if (message.type === 'JOIN_START') {
+      if (this.started) throw new Error('Repeated JOIN_START');
+      this.started = true;
+    } else if (message.type === 'JOIN_END') {
+      if (!this.started || this.ended) throw new Error('Invalid JOIN_END');
+      this.ended = true;
+    } else if (message.type === 'NODE_CHANGES') {
+      if (!this.started || !this.batchNodes) throw new Error('Missing node changes');
+      if (this.ended) this.live++; else this.batches++;
+    } else if (!message.type) throw new Error('Invalid message type');
+    this.batchNodes = 0;
+  }
+  finish() { if (!this.ended || !this.count) throw new Error('Incomplete initial load: JOIN_END or nodes missing. Recapture after loading finishes.'); }
+  private node(id: string) {
+    const slot = this.slot(id), length = slot?.buffer.readUInt32LE(32);
+    if (!slot || !length) throw new Error('Selected node not present in capture');
+    return JSON.parse(read(this.log, length, slot.buffer.readDoubleLE(24)).toString('utf8'));
+  }
+  private children(id: string): string[] {
+    const slot = this.slot(id);
+    if (!slot) return [];
+    if (slot.buffer.readUInt32LE(40) > DISK_LIMITS.siblings) throw new Error('Sibling count limit exceeded; select a smaller branch');
+    const list: { id: string; position: string }[] = [];
+    let next = slot.buffer.readUInt32LE(36), bytes = 0;
+    while (next) {
+      const edge = read(this.edges, EDGE_BYTES, (next - 1) * EDGE_BYTES);
+      const child = `${edge.readDoubleLE(0)}:${edge.readDoubleLE(8)}`, position = this.node(child).parentIndex.position;
+      bytes += Buffer.byteLength(position) + child.length;
+      if (bytes > DISK_LIMITS.siblingBytes) throw new Error('Sibling ordering size limit exceeded');
+      list.push({ id: child, position }); next = edge.readUInt32LE(16);
+    }
+    list.sort((a, b) => a.position < b.position ? -1 : a.position > b.position ? 1 : a.id.localeCompare(b.id));
+    return list.map(n => n.id);
+  }
+  query(params: NetworkQuery) {
+    const { fileKey, nodeId } = parseNetworkSelection(params.url);
+    if (fileKey !== this.fileKey) throw new Error('Selection file does not match capture');
+    if (!Number.isInteger(params.depth) || params.depth < 0 || params.depth > 50 || !Number.isInteger(params.maxNodes) || params.maxNodes < 1 || params.maxNodes > 500 || !Number.isSafeInteger(params.offset) || params.offset < 0) throw new Error('Invalid traversal limits');
+    this.node(nodeId);
+    const stack = [{ id: nodeId, depth: 0 }], seen = new Set<string>(), pending: string[] = [], skipped: string[] = [], nodes: any[] = [];
+    let eligible = 0, bytes = 0, pendingCount = 0, skippedCount = 0, outputFull = false;
+    while (stack.length) {
+      const item = stack.pop()!;
+      if (seen.has(item.id)) throw new Error('Cycle in selected tree');
+      seen.add(item.id);
+      const n = this.node(item.id);
+      if (!params.includeHidden && n.visible === false) { skippedCount++; if (skipped.length < 1000) skipped.push(item.id); continue; }
+      if (eligible++ >= params.offset && nodes.length < params.maxNodes && !outputFull) {
+        const { guid, parentIndex, phase, ...properties } = n;
+        let entry = { id: item.id, parentId: parentIndex ? safeId(parentIndex.guid) : null, depth: item.depth, ...properties };
+        if (Buffer.byteLength(JSON.stringify(entry)) > 120000) entry = { id: item.id, parentId: entry.parentId, depth: item.depth,
+          name: typeof n.name === 'string' ? n.name.slice(0, 1000) : undefined, type: n.type, propertiesOmitted: 'Node exceeds output limit' };
+        const length = Buffer.byteLength(JSON.stringify(entry));
+        if (bytes + length > 150000) outputFull = true;
+        else { nodes.push(entry); bytes += length; }
+      }
+      if (item.depth >= params.depth) {
+        if (this.slot(item.id)!.buffer.readUInt32LE(40)) { pendingCount++; if (pending.length < 1000) pending.push(item.id); }
+      } else {
+        const children = this.children(item.id);
+        for (let i = children.length - 1; i >= 0; i--) stack.push({ id: children[i], depth: item.depth + 1 });
+      }
+    }
+    const next = params.offset + nodes.length;
+    return { adapter: 'figma-network-snapshot', live: false, fileKey, rootId: nodeId, documentRecords: this.count,
+      initialBatches: this.batches, ignoredLiveBatches: this.live, nodes,
+      traversal: { eligibleRecords: eligible, returned: nodes.length, pendingDepth: pending, skippedHidden: skipped,
+        pendingDepthCount: pendingCount, skippedHiddenCount: skippedCount, diagnosticListsTruncated: pendingCount > pending.length || skippedCount > skipped.length,
+        nextOffset: next < eligible ? next : null }, incomplete: true,
+      limitations: ['Captured initial state, not current live state.', 'Instances/overrides are not expanded; variables, geometry blobs and image assets are not resolved.',
+        'Sibling order uses wire position; full equivalence with rendered Layers is not verified.'] };
+  }
+}

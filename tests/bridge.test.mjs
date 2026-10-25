@@ -90,3 +90,35 @@ test('keepalive pong does not complete or replace a pending request', async t =>
   peer.send(JSON.stringify({type:'response',id:request.id,result:{ok:true}}));
   assert.deepEqual(await pending,{ok:true});
 });
+test('cache controls require authentication, are bounded to known actions and serialize against MCP reads', async t => {
+  let calls = [], release;
+  const b = new Bridge(secret, 0, 1000, async action => {
+    calls.push(action);
+    if (action === 'cache-clear') return new Promise(resolve => { release = () => resolve({ removedGenerations: 2 }); });
+    return { bytes: 123 };
+  });
+  await b.ready; t.after(() => b.close());
+  const bad = new WebSocket(`ws://127.0.0.1:${b.port}`); await once(bad, 'open');
+  const closed = once(bad, 'close'); bad.send(JSON.stringify({ type: 'cache-control', id: 'x', action: 'cache-clear' }));
+  assert.equal((await closed)[0], 1008); assert.deepEqual(calls, []);
+  const peer = await pair(b.port, secret);
+  const receive = once(peer, 'message');
+  peer.send(JSON.stringify({ type: 'cache-control', id: 'info', action: 'cache-info' }));
+  assert.deepEqual(JSON.parse((await receive)[0]), { type: 'cache-result', id: 'info', result: { bytes: 123 } });
+  peer.send(JSON.stringify({ type: 'cache-control', id: 'clear', action: 'cache-clear' }));
+  while (!release) await new Promise(resolve => setImmediate(resolve));
+  await assert.rejects(b.request('get_selection', {}), /busy/);
+  const denied = once(peer, 'message');
+  peer.send(JSON.stringify({ type: 'cache-control', id: 'again', action: 'cache-clear' }));
+  assert.match(JSON.parse((await denied)[0]).error, /занят/);
+  const cleared = once(peer, 'message'); release();
+  assert.equal(JSON.parse((await cleared)[0]).result.removedGenerations, 2);
+  const requestMessage = once(peer, 'message'); const pending = b.request('get_selection', {});
+  const request = JSON.parse((await requestMessage)[0]);
+  const busy = once(peer, 'message'); peer.send(JSON.stringify({ type: 'cache-control', id: 'during-read', action: 'cache-clear' }));
+  assert.match(JSON.parse((await busy)[0]).error, /занят/);
+  peer.send(JSON.stringify({ type: 'response', id: request.id, result: {} })); await pending;
+  assert.deepEqual(calls, ['cache-info', 'cache-clear']);
+  const invalid = once(peer, 'close'); peer.send(JSON.stringify({ type: 'cache-control', id: 'x', action: 'delete-path', path: '/' }));
+  assert.equal((await invalid)[0], 1008);
+});

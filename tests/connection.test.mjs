@@ -31,7 +31,7 @@ async function fixture(pairing, session, overrides={}) {
 const target={tabId:7,fileKey:'test',wanted:true};
 test('authentication saves key; session restore retains target and has no popup dependency',async()=>{
   const f=await fixture();await f.connect();assert.equal(f.local.pairing,undefined);
-  const ws=f.sockets[0];ws.open();await ws.message({type:'ready'});await flush();
+  const ws=f.sockets[0];ws.open();assert.equal(ws.sent[0].fileKey,'test');await ws.message({type:'ready'});await flush();
   assert.equal(f.local.pairing.secret,secret);
   assert.equal((await f.controller.control({action:'status'})).state,'connected');
   assert.equal([...f.intervals.values()][0].delay,20000);[...f.intervals.values()][0].fn();
@@ -94,7 +94,7 @@ test('popup close only stops UI refresh; information goes directly to README',as
   const {readFile}=await import('node:fs/promises');const vm=await import('node:vm');
   const source=await readFile(new URL('../extension/popup.js',import.meta.url),'utf8');
   const html=await readFile(new URL('../extension/popup.html',import.meta.url),'utf8');
-  const elements=Object.fromEntries(['status','target','connect','secret','port','submit','disconnect','forget','saved-secret','secret-field','change-secret'].map(id=>[id,{value:'',addEventListener(){}}]));
+  const elements=Object.fromEntries(['status','target','connect','secret','port','submit','disconnect','forget','saved-secret','secret-field','change-secret','cache-status','cache-info','cache-clear'].map(id=>[id,{value:'',addEventListener(){}}]));
   const sent=[];let close,cleared=false;
   vm.runInNewContext(source,{document:{getElementById:id=>elements[id]},window:{addEventListener:(name,fn)=>{close=fn;}},
     setInterval:()=>1,clearInterval:()=>{cleared=true;},
@@ -153,7 +153,7 @@ test('one secret entry pairs different Figma tabs and files, including after bro
 test('a new popup on another Figma tab submits an empty secret and the saved port',async()=>{
   const {readFile}=await import('node:fs/promises');const vm=await import('node:vm');
   const source=await readFile(new URL('../extension/popup.js',import.meta.url),'utf8');
-  const elements=Object.fromEntries(['status','target','connect','secret','port','submit','disconnect','forget','saved-secret','secret-field','change-secret'].map(id=>[id,{value:'',listeners:{},addEventListener(event,fn){this.listeners[event]=fn;}}]));
+  const elements=Object.fromEntries(['status','target','connect','secret','port','submit','disconnect','forget','saved-secret','secret-field','change-secret','cache-status','cache-info','cache-clear'].map(id=>[id,{value:'',listeners:{},addEventListener(event,fn){this.listeners[event]=fn;}}]));
   const sent=[];
   vm.runInNewContext(source,{Date,Number,document:{getElementById:id=>elements[id]},window:{addEventListener(){}},setInterval:()=>1,clearInterval(){},
     chrome:{tabs:{query:async()=>[{id:8,url:'https://www.figma.com/design/second/name'}]},storage:{onChanged:{addListener(){},removeListener(){}},local:{get:async()=>({pairing:{port:4055,secret}})}},runtime:{sendMessage:async msg=>{sent.push(msg);return {state:'connected',tabId:7,message:'Подключено'};}}}});
@@ -166,4 +166,46 @@ test('a new popup on another Figma tab submits an empty secret and the saved por
   elements.connect.listeners.submit({preventDefault(){}});await flush();
   const message=sent.at(-1);
   assert.equal(message.action,'connect');assert.equal(message.tabId,8);assert.equal(message.port,4055);assert.equal(message.secret,'');
+});
+test('cache commands correlate results, surface errors and never replay on reconnect', async () => {
+  const f = await fixture({port:3055,secret}, target);
+  const ws = f.sockets[0]; ws.open(); await ws.message({type:'ready'});
+  const pending = f.controller.control({action:'cache-clear'}); await flush();
+  const request = ws.sent.at(-1);
+  assert.equal(request.type,'cache-control'); assert.equal(request.action,'cache-clear');
+  await ws.message({type:'cache-result',id:'old',result:{bytes:0}});
+  assert.match((await f.controller.control({action:'cache-clear'})).error,/Дождись/);
+  await ws.message({type:'cache-result',id:request.id,result:{bytes:0,removedBytes:123,removedGenerations:1}});
+  assert.equal((await pending).cache.removedGenerations,1);
+  const failed = f.controller.control({action:'cache-info'}); await flush();
+  await ws.message({type:'cache-result',id:ws.sent.at(-1).id,error:'Disk inaccessible'});
+  assert.equal((await failed).error,'Disk inaccessible');
+  const disconnected = f.controller.control({action:'cache-clear'}); await flush(); ws.close(1006);
+  assert.match((await disconnected).error,/неизвестен/);
+  f.tick(); const next=f.sockets.at(-1); next.open(); await next.message({type:'ready'});
+  assert.deepEqual(next.sent.map(m=>m.type),['auth']);
+  const timeout = f.controller.control({action:'cache-clear'}); await flush(); f.tick();
+  assert.match((await timeout).error,/неизвестен/);
+  await f.controller.control({action:'disconnect'});
+  assert.match((await f.controller.control({action:'cache-clear'})).error,/подключи/);
+});
+test('popup cache button sends one explicit clear command and keeps cache feedback separate', async () => {
+  const {readFile}=await import('node:fs/promises'); const vm=await import('node:vm');
+  const source=await readFile(new URL('../extension/popup.js',import.meta.url),'utf8');
+  const elements = new Map();
+  const element = id => {
+    if(!elements.has(id)) elements.set(id,{value:'',listeners:{},addEventListener(name,fn){this.listeners[name]=fn;}});
+    return elements.get(id);
+  };
+  const sent=[];
+  vm.runInNewContext(source,{document:{getElementById:element},window:{addEventListener(){}},setInterval:()=>1,clearInterval(){},
+    chrome:{tabs:{query:async()=>[{id:7,url:'https://www.figma.com/design/test/name'}]},storage:{onChanged:{addListener(){},removeListener(){}},local:{get:async()=>({})}},
+      runtime:{sendMessage:async msg=>{sent.push(msg);return msg.action==='status'?{state:'connected',message:'Подключено'}:
+        {cache:{bytes:0,removedBytes:1024,removedGenerations:2,protectedEntries:1}};}}}});
+  await flush(); assert.equal(element('cache-clear').disabled,false);
+  await element('cache-clear').listeners.click();
+  assert.deepEqual(sent.map(m=>m.action),['status','cache-clear']);
+  assert.match(element('cache-status').textContent,/Удалено 2/);
+  assert.match(element('cache-status').textContent,/сохранены/);
+  assert.equal(element('status').textContent,'Подключено');
 });

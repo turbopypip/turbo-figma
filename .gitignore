@@ -3,3 +3,5 @@ dist/
 .local/
 artifacts/
 *.log
+ideas/
+.cache/

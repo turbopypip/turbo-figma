@@ -1,9 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, writeFile, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, writeFile, readFile, rm, cp, symlink, mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import net from 'node:net';
+import { once } from 'node:events';
+import { NetworkStore } from '../dist/network-store.js';
 import { Client } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 import { pair, mockBrowser, PNG } from './helpers.mjs';
@@ -14,13 +16,23 @@ test('real stdio MCP session: discovery, context, image, disk export, EOF cleanu
   const port = probe.address().port; await new Promise(r => probe.close(r));
   const secret = 'c'.repeat(64), configPath = path.join(dir, 'config.json');
   await writeFile(configPath, JSON.stringify({ secret, port, assetDirectory: path.join(dir, 'assets') }));
-  const transport = new StdioClientTransport({ command: process.execPath, args: [path.resolve('dist/index.js')],
+  // Run a copied installation: startup retention must never touch the developer's cache.
+  const installation = path.join(dir, 'installation');
+  await mkdir(installation);
+  await cp(path.resolve('dist'), path.join(installation, 'dist'), { recursive: true });
+  await cp(path.resolve('package.json'), path.join(installation, 'package.json'));
+  await symlink(path.resolve('node_modules'), path.join(installation, 'node_modules'), 'junction');
+  const cache = await NetworkStore.create(installation);
+  const capture = await cache.begin({ fileKey: 'test', sessionId: 'integration', generation: 1 }, { pageId: '1:1', frameId: '1:2' });
+  await capture.append(0, Buffer.from('cached frame'));
+  await capture.commit({ schemaReceived: true, joinStarted: true, joinEnded: true, receivedParts: 1, droppedParts: 0, sequenceComplete: true });
+  const transport = new StdioClientTransport({ command: process.execPath, args: [path.join(installation, 'dist', 'index.js')], cwd: dir,
     env: { ...process.env, FIGMA_KILO_CONFIG: configPath }, stderr: 'pipe' });
   let diagnostics = ''; transport.stderr.on('data', chunk => { diagnostics += chunk; });
   const client = new Client({ name: 'integration-test', version: '1.0.0' });
   t.after(() => client.close()); await client.connect(transport);
   const { tools } = await client.listTools();
-  assert.deepEqual(tools.map(t => t.name).sort(), ['export_assets', 'get_connection_status', 'get_design_context', 'get_screenshot', 'get_selection']);
+  assert.deepEqual(tools.map(t => t.name).sort(), ['export_assets', 'get_connection_status', 'get_design_context', 'get_network_tree', 'get_screenshot', 'get_selection']);
   const status = async () => JSON.parse((await client.callTool({name: 'get_connection_status', arguments: {}})).content[0].text);
   assert.equal((await status()).state, 'disconnected');
   assert.equal((await status()).mcp, 'running');
@@ -51,6 +63,15 @@ test('real stdio MCP session: discovery, context, image, disk export, EOF cleanu
   const assets = await client.callTool({ name: 'export_assets', arguments: { nodeIds: ['1:1', 'missing'], format: 'SVG' } });
   const result = JSON.parse(assets.content[0].text);
   assert.match(await readFile(result.results[0].path, 'utf8'), /<svg/); assert.match(result.results[1].error, /not mounted/);
+  const infoReply = once(ws, 'message');
+  ws.send(JSON.stringify({ type: 'cache-control', id: 'info', action: 'cache-info' }));
+  assert.equal(JSON.parse((await infoReply)[0]).result.generations, 1);
+  const clearReply = once(ws, 'message');
+  ws.send(JSON.stringify({ type: 'cache-control', id: 'clear', action: 'cache-clear' }));
+  assert.equal(JSON.parse((await clearReply)[0]).result.removedGenerations, 1);
+  assert.equal((await cache.info()).generations, 0);
+  assert.match(await readFile(result.results[0].path, 'utf8'), /<svg/);
+  assert.equal(JSON.parse(await readFile(configPath, 'utf8')).secret, secret);
   assert.equal(diagnostics.includes(secret), false);
   const pid = transport.pid;
   await client.close();
