@@ -13,6 +13,27 @@ import type { SnapshotIdentity } from './network-session.js';
 
 export type NetworkMeasurement = { stage: string; elapsedMs: number; memory: NodeJS.MemoryUsage; processPeakRssBytes: number };
 let busy = false;
+let stopping: Promise<void> | undefined;
+let active: { controller: AbortController; done: Promise<void>; finish: () => void } | undefined;
+function startOperation() {
+  const controller = new AbortController();
+  let finish!: () => void;
+  const done = new Promise<void>(resolve => { finish = resolve; });
+  active = { controller, done, finish };
+  busy = true;
+  return controller.signal;
+}
+function endOperation() { busy = false; active?.finish(); active = undefined; }
+/** Cancel active work and await worker termination, scratch removal and lease release. */
+export function stopNetworkSelection(): Promise<void> {
+  if (stopping) return stopping;
+  stopping = (async () => {
+    active?.controller.abort();
+    await active?.done;
+    await releaseNetworkSelection();
+  })().finally(() => { stopping = undefined; });
+  return stopping;
+}
 const projectDirectory = fileURLToPath(new URL('../', import.meta.url));
 
 type Retained = { key: string; worker: Worker; scratch: string; dead?: boolean; watching?: boolean; liveRegistered?: boolean; unregister?: () => void; idle?: NodeJS.Timeout };
@@ -24,18 +45,19 @@ async function dispose() {
   await old.worker.terminate();
   await rm(old.scratch, { recursive: true, force: true });
 }
-/** Explicit shutdown hook; callers cannot interrupt an active read. */
+/** Idle/cache-maintenance release; use stopNetworkSelection to cancel active work. */
 export async function releaseNetworkSelection() {
   if (busy) throw new Error('Network snapshot reader is busy');
-  busy = true;
-  try { await dispose(); } finally { busy = false; }
+  startOperation();
+  try { await dispose(); } finally { endOperation(); }
 }
 
 /** One retained selection and one active request, including termination and cleanup. */
 async function decode(params: Record<string, unknown>, cache: NetworkStore, signal?: AbortSignal, observe?: (sample: NetworkMeasurement) => void): Promise<unknown> {
   if (signal?.aborted) throw new Error('Request cancelled');
-  if (busy) throw new Error('Network snapshot reader is busy');
-  busy = true;
+  if (busy || stopping) throw new Error('Network snapshot reader is busy');
+  const lifecycle = startOperation();
+  signal = signal ? AbortSignal.any([signal, lifecycle]) : lifecycle;
   let preserveIndex = false;
   try {
     clearTimeout(retained?.idle);
@@ -135,13 +157,13 @@ async function decode(params: Record<string, unknown>, cache: NetworkStore, sign
         retained.liveRegistered = true;
         const entry = retained;
         const unregisterLive = cache.onLive(snapshot, async payload => {
-          if (busy || retained !== entry || entry.dead) throw new Error('STALE: selection reader busy or released');
-          busy = true; clearTimeout(entry.idle); worker.ref();
+          if (busy || stopping || retained !== entry || entry.dead) throw new Error('STALE: selection reader busy or released');
+          const lifecycle = startOperation(); clearTimeout(entry.idle); worker.ref();
           try {
             await cache.withRead(() => new Promise<void>((resolve, reject) => {
               const finish = (error?: Error) => {
                 clearTimeout(timer); worker.off('message', message); worker.off('error', fail); worker.off('exit', exited);
-                freshness.removeEventListener('abort', abort);
+                freshness.removeEventListener('abort', abort); lifecycle.removeEventListener('abort', abort);
                 error ? reject(error) : resolve();
               };
               const fail = (error: Error) => finish(error);
@@ -151,12 +173,13 @@ async function decode(params: Record<string, unknown>, cache: NetworkStore, sign
               const timer = setTimeout(() => finish(new Error('Live update timed out')), 10000);
               worker.on('message', message); worker.once('error', fail); worker.once('exit', exited);
               freshness.addEventListener('abort', abort, { once: true });
-              if (freshness.aborted) abort(); else worker.postMessage({ livePayload: payload });
+              lifecycle.addEventListener('abort', abort, { once: true });
+              if (freshness.aborted || lifecycle.aborted) abort(); else worker.postMessage({ livePayload: payload });
             }));
             worker.unref();
             entry.idle = setTimeout(() => { void releaseNetworkSelection().catch(() => {}); }, 60000); entry.idle.unref();
           } catch (error) { await dispose(); throw error; }
-          finally { busy = false; }
+          finally { endOperation(); }
         });
         const unregister = entry.unregister;
         entry.unregister = () => { unregisterLive(); unregister?.(); };
@@ -204,7 +227,7 @@ async function decode(params: Record<string, unknown>, cache: NetworkStore, sign
       return result;
     });
   } catch (error) { if (!preserveIndex) await dispose(); throw error; }
-  finally { busy = false; }
+  finally { endOperation(); }
 }
 
 /** Legacy research capture adapter; streams events instead of parsing the entire JSON file. */

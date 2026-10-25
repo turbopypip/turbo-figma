@@ -7,6 +7,8 @@ export const MAX_MESSAGE = 6 * 1024 * 1024;
 export class Bridge {
   private server: WebSocketServer;
   private peer?: WebSocket;
+  private pairedFile?: string;
+  get fileKey(): string | undefined { return this.peer?.readyState === WebSocket.OPEN ? this.pairedFile : undefined; }
   private connectedAt: string | null = null;
   private disconnectedAt: string | null = null;
   private pending?: { id: string; finish: (error?: Error, value?: unknown) => void };
@@ -59,6 +61,7 @@ export class Bridge {
               for (const previous of this.transfers) void previous.close();
             }
             this.peer = socket;
+            this.pairedFile = msg.fileKey;
             // Reserve the peer, but do not announce ready until the preceding
             // capture has released its disk writer and read leases.
             await Promise.all([...this.transfers].map(previous => previous.close()));

@@ -7,7 +7,7 @@ import { BoundedWireDecoder, WIRE_LIMITS } from '../dist/network-wire.js';
 import { DiskNetworkSnapshot, SELECTION_LIMITS } from '../dist/network-disk.js';
 import { nodeFields } from '../dist/network.js';
 import { NetworkStore } from '../dist/network-store.js';
-import { readStoredNetworkSnapshot, releaseNetworkSelection } from '../dist/network-reader.js';
+import { readStoredNetworkSnapshot, releaseNetworkSelection, stopNetworkSelection } from '../dist/network-reader.js';
 import { probeEvents } from '../dist/network-source.js';
 import { zstd } from './wire-fixture.mjs';
 const schema = parseSchema(`
@@ -227,4 +227,22 @@ test('historical stored captures explicitly disclaim current freshness',async t=
  const store=await NetworkStore.create(await directory(t));t.after(releaseNetworkSelection);
  await capture(store,records([node(1)]));
  assert.equal((await readStoredNetworkSnapshot(store,identity,query)).freshness.status,'historical');
+});
+
+test('shutdown cancels cold reads, awaits scratch cleanup, and permits repeated lifecycle cycles', async t => {
+ const store = await NetworkStore.create(await directory(t));
+ await capture(store, records([node(1), node(2, 1)]));
+ const before = await readdir(store.root);
+ for (let i = 0; i < 3; i++) {
+  let started; const ready = new Promise(resolve => { started = resolve; });
+  const pending = readStoredNetworkSnapshot(store, identity, query, undefined, m => { if (m.stage === 'worker-start') started(); });
+  const rejected = assert.rejects(pending, /cancelled/);
+  await ready;
+  await Promise.all([stopNetworkSelection(), stopNetworkSelection(), rejected]);
+  assert.deepEqual(await readdir(store.root), before);
+ }
+ await readStoredNetworkSnapshot(store, identity, query);
+ await stopNetworkSelection();
+ assert.deepEqual(await readdir(store.root), before);
+ await store.clean();
 });

@@ -6,6 +6,7 @@ import { Bridge } from './bridge.js';
 import { AssetStore } from './assets.js';
 import path from 'node:path';
 import { NetworkStore } from './network-store.js';
+import { stopNetworkSelection } from './network-reader.js';
 import { createServer } from './server.js';
 
 const configSchema = z.object({ secret: z.string().min(32).max(256),
@@ -31,8 +32,8 @@ async function main() {
   const close = async () => {
     if (closing) return;
     closing = true;
-    await bridge.close();
-    await handle.close();
+    try { await bridge.close(); }
+    finally { try { await stopNetworkSelection(); } finally { await handle.close(); } }
   };
   process.stdin.once('end', () => void close());
   process.stdin.once('close', () => void close());

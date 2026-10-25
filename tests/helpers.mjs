@@ -11,10 +11,10 @@ export function mockBrowser(method, params) {
   return { nodeId: node.id, name: node.name, format, scale: 1,
     data: format === 'SVG' ? Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>').toString('base64') : PNG };
 }
-export async function pair(port, secret, respond) {
+export async function pair(port, secret, respond, fileKey) {
   const ws = new WebSocket(`ws://127.0.0.1:${port}`);
   await once(ws, 'open');
-  const ready = once(ws, 'message'); ws.send(JSON.stringify({ type: 'auth', secret }));
+  const ready = once(ws, 'message'); ws.send(JSON.stringify({ type: 'auth', secret, fileKey }));
   const [raw] = await ready;
   if (JSON.parse(raw).type !== 'ready') throw new Error('Pair failed');
   if (respond) ws.on('message', async raw => {
