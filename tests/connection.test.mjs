@@ -76,6 +76,7 @@ test('badge text, color and tooltip track serialized final state',async()=>{
   const values={};const action=Object.fromEntries(['setBadgeBackgroundColor','setBadgeText','setTitle'].map(key=>[key,async v=>{values[key]=v;}]));
   const show=createStatusBadge({action});show('connected');show('busy');await show('error');
   assert.equal(values.setBadgeText.text,'!');assert.equal(values.setBadgeBackgroundColor.color,'#b63030');assert.match(values.setTitle.title,/отклонено/);
+  await show('stale');assert.match(values.setTitle.title,/снимок устарел/);assert.doesNotMatch(values.setTitle.title,/ключ/);
   await show('disconnected');assert.equal(values.setBadgeText.text,'OFF');
 });
 test('real WebSocket bridge restarts and background reconnects without replay',async()=>{

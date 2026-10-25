@@ -35,5 +35,7 @@ try {
   while (collector.status.state === 'finishing' && performance.now() < deadline) await new Promise(r => setTimeout(r, 2));
   if (collector.status.state !== 'ready') throw new Error('Replay did not produce a ready snapshot');
   sample('capture-ready'); emit({ type: 'done', events: collector.status.events, bytes: collector.status.bytes });
+  // Keep production observation/heartbeats alive throughout decode and idle measurements.
+  await new Promise(resolve => process.once('disconnect', resolve));
 } catch { emit({ type: 'failed', error: 'Capture replay failed; inspect fixture and supported initial protocol.' }); process.exitCode = 1; }
 finally { await collector?.stop(); socket?.close(); if (process.connected) process.disconnect(); }

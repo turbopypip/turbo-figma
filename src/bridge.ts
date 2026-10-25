@@ -14,7 +14,7 @@ export class Bridge {
   private transfers = new Set<NetworkTransfer>();
   private get captureBusy() { return [...this.transfers].some(transfer => transfer.busy); }
   readonly ready: Promise<void>;
-  constructor(private secret: string, port = 3055, private timeout = 30_000, private cacheControl?: (action: 'cache-info' | 'cache-clear') => Promise<unknown>, private captureStore?: Pick<NetworkStore, 'begin'>) {
+  constructor(private secret: string, port = 3055, private timeout = 30_000, private cacheControl?: (action: 'cache-info' | 'cache-clear') => Promise<unknown>, private captureStore?: Pick<NetworkStore, 'begin' | 'observe' | 'renewObservation' | 'applyLive'>) {
     this.server = new WebSocketServer({ host: '127.0.0.1', port, maxPayload: MAX_MESSAGE,
       perMessageDeflate: false, backlog: 8 });
     this.ready = new Promise((resolve, reject) => {
@@ -39,7 +39,7 @@ export class Bridge {
           this.pending?.finish(new Error('Figma browser extension disconnected. Reconnect the browser extension.'));
         }
       });
-      socket.on('message', raw => {
+      socket.on('message', async raw => {
         try {
           const msg = JSON.parse(raw.toString());
           if (!authenticated) {
@@ -59,6 +59,10 @@ export class Bridge {
               for (const previous of this.transfers) void previous.close();
             }
             this.peer = socket;
+            // Reserve the peer, but do not announce ready until the preceding
+            // capture has released its disk writer and read leases.
+            await Promise.all([...this.transfers].map(previous => previous.close()));
+            if (this.peer !== socket || socket.readyState !== WebSocket.OPEN) return;
             this.connectedAt = new Date().toISOString();
             if (this.captureStore) {
               transfer = new NetworkTransfer(this.captureStore, msg.fileKey, message => {

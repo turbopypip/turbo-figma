@@ -127,9 +127,9 @@ try {
       const timer = setTimeout(() => { replay.kill(); reject(new Error('Replay timed out')); }, 150000);
       replay.on('message', message => {
         if (message.type === 'replay-metrics') { replayMeasurements.push({ atMs: elapsed(), ...message }); traceLine({ atMs: elapsed(), ...message }); }
-        if (message.type === 'done') captureResult = { events: message.events, bytes: message.bytes };
+        if (message.type === 'done') { captureResult = { events: message.events, bytes: message.bytes }; clearTimeout(timer); resolve(); }
       });
-      replay.once('exit', code => { clearTimeout(timer); if (code === 0 && captureResult) resolve(); else reject(new Error('Replay capture failed')); });
+      replay.once('exit', () => { clearTimeout(timer); reject(new Error('Replay observation ended before capture was ready')); });
     });
   });
   const info = await request('cache-status', {}, true);

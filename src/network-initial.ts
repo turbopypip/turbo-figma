@@ -14,6 +14,7 @@ export class InitialSnapshotInspector {
   private started = false;
   private ended = false;
   private nodes = 0;
+  get liveCursor() { return { eventSequence: this.sequence, socket: this.socket }; }
   get progress() { return { schemaReceived: !!this.codec, joinStarted: this.started, joinEnded: this.ended,
     initialComplete: this.ended && !this.pending.length }; }
   push(bytes: Uint8Array) {
@@ -56,6 +57,29 @@ export class InitialSnapshotInspector {
     }
     // Do not retain the backing allocation of consumed records.
     this.pending = Buffer.from(this.pending);
+  }
+  /** Classify fully validated post-JOIN bytes before touching a selection worker. */
+  isServiceMessage(payload: string, direction: 'ws-received' | 'ws-sent' = 'ws-received'): boolean {
+    if (!this.ended || !this.codec) throw new Error('Live schema unavailable');
+    const binary = Buffer.from(payload, 'base64');
+    if (!binary.length || binary.toString('base64') !== payload) throw new Error('Invalid live base64');
+    let nodes = 0;
+    const message = this.codec.decode(inflateFrame(binary, 1024 * 1024), () => { nodes++; }, false,
+      new Set(['type', 'nodeChanges', 'signalName', 'signalPayload', 'sentTimestamp', 'clientRenderedMetadata', 'nodeChangeOrder', 'broadcasts', 'userChanges']), (type, field) => {
+        if (type === 'UserChange' && !['sessionID', 'stableSessionID', 'connected', 'name', 'color', 'imageURL', 'viewport', 'selection', 'deviceName', 'userID', 'canWrite', 'connectedAtTimeS', 'mouse', 'observing', 'heartbeat', 'clientID', 'scrollPositions', 'focusedSlideId', 'designFullPageViewState', 'recentClicks', 'textCursor', 'textSelection', 'focusOnTextCursor'].includes(field))
+          throw new Error(`Unsupported user presence field: ${field}`);
+        if (type === 'ClientBroadcast' && !['sessionID', 'cursorReaction', 'timer', 'presenter', 'prototypePresenter', 'music'].includes(field))
+          throw new Error(`Unsupported client broadcast field: ${field}`);
+      });
+    // Only the observed reconnect notifications are known to be document-neutral.
+    // Unknown signals and signals carrying nodes must never silently lose changes.
+    const only = (fields: string[]) => message.wireFields.every((field: string) => fields.includes(field));
+    if (message.type === 'USER_CHANGES' && nodes === 0 && only(direction === 'ws-sent' ? ['type', 'userChanges', 'sentTimestamp', 'nodeChangeOrder'] : ['type', 'userChanges'])) return true;
+    if (message.type === 'CLIENT_BROADCAST' && nodes === 0 && only(direction === 'ws-sent' ? ['type', 'broadcasts', 'sentTimestamp', 'nodeChangeOrder'] : ['type', 'broadcasts'])) return true;
+    if (direction === 'ws-sent' && message.type === 'CLIENT_RENDERED' && nodes === 0 && only(['type', 'sentTimestamp', 'clientRenderedMetadata', 'nodeChangeOrder'])) return true;
+    if (direction === 'ws-received' && message.type === 'SIGNAL' && only(['type', 'signalName', 'signalPayload', 'nodeChanges']) && ['reconnect-key', 'reconnect-sequence-number'].includes(message.signalName) && nodes === 0) return true;
+    if (message.type !== 'NODE_CHANGES' || message.signalName !== undefined) throw new Error('Unsupported live message type');
+    return false;
   }
   evidence(receivedParts: number) {
     if (!this.progress.initialComplete) throw new Error('Initial load incomplete: schema, JOIN_START or JOIN_END missing; reload and capture again');

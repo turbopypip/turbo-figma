@@ -1,3 +1,4 @@
+import { LIVE_LIMITS, validateLiveChange, assertLiveType } from './network-live.js';
 import { effectiveVariableNode, nativeVariableBindings } from './network-variables.js';
 import { VariableAssetIndex } from './network-variable-index.js';
 import { inheritVariableModes, resolveNativeVariable, type ModeContext } from './network-variable-resolver.js';
@@ -55,6 +56,8 @@ export class DiskNetworkSnapshot {
   private batchNodes = 0;
   private batches = 0;
   private live = 0;
+  private applied = 0;
+  private poisoned = false;
   constructor(readonly fileKey: string, directory: string) {
     try {
       for (const name of ['nodes.bin', 'index.bin', 'edges.bin','variable-assets.bin']) this.fds.push(openSync(join(directory, name), 'wx+', 0o600));
@@ -106,6 +109,65 @@ export class DiskNetworkSnapshot {
       write(this.table, p.buffer, p.offset);
     }
   }
+  /** Mutations are private until worker acknowledgement. A failure poisons this disposable index. */
+  applyLive(changes: Record<string, any>[]) {
+    if (this.poisoned || !this.ended || !this.selectionId) throw new Error('Live index is unavailable');
+    try {
+      if (!changes.length || changes.length > LIVE_LIMITS.changes || this.applied >= LIVE_LIMITS.batches) throw new Error('Live batch limit exceeded');
+      this.selected.clear(); this.selectedBytes = 0;
+      const ids = new Set<string>();
+      for (const change of changes) {
+        validateLiveChange(change);
+        const id = safeId(change.guid);
+        if (ids.has(id)) throw new Error('Repeated GUID in live batch');
+        ids.add(id);
+        const slot = this.slot(id);
+        const old = slot?.buffer.readUInt32LE(32) ? this.node(id, false) : undefined;
+        if (change.phase === 'CREATED' ? !!old || !!slot : !old) throw new Error('Ambiguous live creation/update/removal');
+        if (old) assertLiveType(old);
+        if (change.phase === 'CREATED') {
+          if (!change.type || !change.parentIndex) throw new Error('Incomplete live creation');
+          assertLiveType(change);
+        } else if (change.type !== undefined && change.type !== old.type) throw new Error('Live type change unsupported');
+        if (change.phase === 'REMOVED') {
+          if (id === this.selectionId || this.children(id, false).length) throw new Error('Removing selection root or non-leaf requires recapture');
+          slot!.buffer.writeUInt32LE(0, 32); write(this.table, slot!.buffer, slot!.offset);
+          this.count--; continue;
+        }
+        const merged = { ...old, ...change, phase: 'CREATED' };
+        // Every changed node must have a complete, acyclic ancestry in the disk index.
+        let parent = merged.parentIndex?.guid;
+        const ancestors = new Set<string>([id]);
+        while (parent) {
+          const parentId = safeId(parent);
+          if (ancestors.has(parentId) || ancestors.size > 64) throw new Error('Live parent cycle/depth limit');
+          ancestors.add(parentId);
+          const p = this.node(parentId, false);
+          if (!['FRAME', 'GROUP', 'CANVAS', 'DOCUMENT'].includes(p.type)) throw new Error('Unsupported live parent dependency');
+          parent = p.parentIndex?.guid;
+        }
+        if (change.phase === 'CREATED' && ++this.count > DISK_LIMITS.nodes) throw new Error('Live node limit exceeded');
+        const target = slot ?? this.slot(id, true)!;
+        const data = Buffer.from(JSON.stringify(merged));
+        if (data.length > DISK_LIMITS.nodeBytes || this.bytes + data.length > DISK_LIMITS.totalBytes) throw new Error('Live disk size limit exceeded');
+        write(this.log, data, this.bytes);
+        target.buffer.writeDoubleLE(this.bytes, 24); target.buffer.writeUInt32LE(data.length, 32);
+        write(this.table, target.buffer, target.offset); this.bytes += data.length;
+        const previousParent = old?.parentIndex ? safeId(old.parentIndex.guid) : undefined;
+        const newParent = merged.parentIndex ? safeId(merged.parentIndex.guid) : undefined;
+        if (newParent && previousParent !== newParent) {
+          const p = this.slot(newParent)!;
+          if (p.buffer.readUInt32LE(40) >= DISK_LIMITS.siblings) throw new Error('Live sibling edge limit exceeded');
+          const edge = Buffer.alloc(EDGE_BYTES);
+          edge.writeDoubleLE(change.guid.sessionID); edge.writeDoubleLE(change.guid.localID, 8); edge.writeUInt32LE(p.buffer.readUInt32LE(36), 16);
+          write(this.edges, edge, this.edgeCount++ * EDGE_BYTES);
+          p.buffer.writeUInt32LE(this.edgeCount, 36); p.buffer.writeUInt32LE(p.buffer.readUInt32LE(40) + 1, 40);
+          write(this.table, p.buffer, p.offset);
+        }
+      }
+      this.applied++;
+    } catch (error) { this.poisoned = true; throw error; }
+  }
   acceptMessage(message: Record<string, any>) {
     if (message.type !== 'NODE_CHANGES' && this.batchNodes) throw new Error('Nodes outside initial node batch');
     if (message.type === 'JOIN_START') {
@@ -138,18 +200,25 @@ export class DiskNetworkSnapshot {
     if (!slot) return [];
     if (slot.buffer.readUInt32LE(40) > DISK_LIMITS.siblings) throw new Error('Sibling count limit exceeded; select a smaller branch');
     const list: { id: string; position: string }[] = [];
+    const unique = new Set<string>();
     let next = slot.buffer.readUInt32LE(36), bytes = 0;
     while (next) {
       const edge = read(this.edges, EDGE_BYTES, (next - 1) * EDGE_BYTES);
-      const child = `${edge.readDoubleLE(0)}:${edge.readDoubleLE(8)}`, position = (dependency ? dependency(child)! : this.node(child, cache)).parentIndex.position;
+      const child = `${edge.readDoubleLE(0)}:${edge.readDoubleLE(8)}`;
+      next = edge.readUInt32LE(16);
+      if (!this.slot(child)?.buffer.readUInt32LE(32) || unique.has(child)) continue;
+      const node = dependency ? dependency(child)! : this.node(child, false);
+      if (!node.parentIndex || safeId(node.parentIndex.guid) !== id) continue;
+      const position = node.parentIndex.position;
       bytes += Buffer.byteLength(position) + child.length;
       if (bytes > DISK_LIMITS.siblingBytes) throw new Error('Sibling ordering size limit exceeded');
-      list.push({ id: child, position }); next = edge.readUInt32LE(16);
+      unique.add(child); list.push({ id: child, position });
     }
     list.sort((a, b) => a.position < b.position ? -1 : a.position > b.position ? 1 : a.id.localeCompare(b.id));
     return list.map(n => n.id);
   }
   query(params: NetworkQuery) {
+    if (this.poisoned) throw new Error('STALE: live index failed; recapture');
     const { fileKey, nodeId } = parseNetworkSelection(params.url);
     if (fileKey !== this.fileKey) throw new Error('Selection file does not match capture');
     if (!Number.isInteger(params.depth) || params.depth < 0 || params.depth > 50 || !Number.isInteger(params.maxNodes) || params.maxNodes < 1 || params.maxNodes > 500 || !Number.isSafeInteger(params.offset) || params.offset < 0) throw new Error('Invalid traversal limits');
@@ -221,7 +290,7 @@ export class DiskNetworkSnapshot {
       }
       if (skipChildren) continue;
       if (item.depth >= params.depth) {
-        if (this.slot(childSource)?.buffer.readUInt32LE(40)) { pendingCount++; if (pending.length < 10) pending.push(item.id); }
+        if (this.applied ? this.children(childSource, !childContext, childContext ? dependency : undefined).length : this.slot(childSource)?.buffer.readUInt32LE(40)) { pendingCount++; if (pending.length < 10) pending.push(item.id); }
       } else {
         const children = this.children(childSource, !childContext, childContext ? dependency : undefined);
         if (!['HORIZONTAL','VERTICAL','GRID'].includes(n.stackMode) && ['GROUP','BOOLEAN_OPERATION','VECTOR','FRAME','SYMBOL','INSTANCE'].includes(n.type)) children.reverse();
@@ -230,14 +299,14 @@ export class DiskNetworkSnapshot {
       }
     }
     const next = params.offset + nodes.length;
-    return { adapter: 'figma-network-snapshot', live: false, fileKey, rootId: nodeId, documentRecords: this.count,
+    return { adapter: 'figma-network-snapshot', live: this.applied > 0, appliedLiveBatches: this.applied, fileKey, rootId: nodeId, documentRecords: this.count,
       initialBatches: this.batches, ignoredLiveBatches: this.live, nodes,
       traversal: { eligibleRecords: eligible, returned: nodes.length, pendingDepth: pending, skippedHidden: skipped,
         pendingDepthCount: pendingCount, skippedHiddenCount: skippedCount, diagnosticListsTruncated: pendingCount > pending.length || skippedCount > skipped.length,
         nextOffset: next < eligible ? next : null, unresolvedInstanceCount:unresolvedCount }, incomplete: true,
       nativeVariables:{source:'captured-definitions',dependencyReads:variableReads,dependencyBytes:variableBytes,complete:false},
       components:{representation:'expanded-supported-subset',complete:false,dependencyReads,dependencyBytes,limits:COMPONENT_LIMITS},
-      limitations: ['Captured initial state, not current live state.', 'Instance children use canonical instance/source paths, not browser-session generated IDs; native variable resolution reports missing definitions and unknown modes; geometry blobs and image assets are not resolved.',
+      limitations: [this.applied ? 'Bounded supported live changes applied to the retained disk index; unsupported changes require recapture.' : 'Captured initial state; freshness is checked by the managed reader.', 'Instance children use canonical instance/source paths, not browser-session generated IDs; native variable resolution reports missing definitions and unknown modes; geometry blobs and image assets are not resolved.',
         'Layers order uses wire position for Auto Layout and reverse paint order for other containers; layout parity is verified on the documented control selection.'] };
   }
 }

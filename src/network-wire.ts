@@ -76,9 +76,10 @@ export class BoundedWireDecoder {
     const changes = message?.fields.find(f => f.name === 'nodeChanges');
     if (message?.kind !== 'MESSAGE' || node?.kind !== 'MESSAGE' || changes?.type !== 'NodeChange' || !changes.isArray) throw new Error('Required wire definitions missing');
   }
-  decode(bytes: Uint8Array, visit: (node: Record<string, any>) => void): Record<string, any> {
+  decode(bytes: Uint8Array, visit: (node: Record<string, any>) => void, strict = false, messageFields?: ReadonlySet<string>, validateField?: (type: string, field: string) => void): Record<string, any> {
     if (bytes.length > WIRE_LIMITS.frameBytes) throw new Error('Wire frame size limit exceeded');
     const r = new Reader(bytes);
+    const messageFieldNames: string[] = [];
     let operations = 0, nodeStart = 0, retainedBytes = 0, insideNode = false;
     const tick = () => {
       if (++operations > WIRE_LIMITS.operations) throw new Error('Wire message operation limit exceeded');
@@ -114,8 +115,13 @@ export class BoundedWireDecoder {
       const seen = new Set<number>();
       const field = (f: Field) => {
         tick();
+        validateField?.(type, f.name);
+        if (depth === 0 && messageFields) messageFieldNames.push(f.name);
+        if (depth === 0 && messageFields && !messageFields.has(f.name)) throw new Error(`Unsupported live message field: ${f.name}`);
         const streamNodes = depth === 0 && type === 'Message' && f.name === 'nodeChanges';
-        const retain = keep && (type === 'Message' ? f.name === 'type' : type === 'NodeChange' ? this.fields.has(f.name) : keepStyleField(type, f.name));
+        if (strict && ((type === 'Message' && !['type', 'nodeChanges'].includes(f.name)) || (type === 'NodeChange' && !this.fields.has(f.name)))) throw new Error(`Unsupported live wire field: ${type}.${f.name}`);
+        const retain = keep && (type === 'Message' ? (f.name === 'type' || (!!messageFields && f.name === 'signalName')) : type === 'NodeChange' ? this.fields.has(f.name) : keepStyleField(type, f.name));
+        if (strict && keep && !retain && !streamNodes) throw new Error(`Unsupported nested live field: ${type}.${f.name}`);
         if (!f.isArray) {
           const v = read(f.type!, retain, depth + 1);
           if (retain) result![f.name] = v;
@@ -155,6 +161,7 @@ export class BoundedWireDecoder {
     };
     const message = read('Message', true, 0);
     if (r.position !== r.length) throw new Error('Trailing wire message bytes');
+    if (messageFields) message.wireFields = messageFieldNames;
     return message;
   }
 }

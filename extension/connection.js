@@ -162,11 +162,11 @@ export function createConnection(chrome, { WebSocket = globalThis.WebSocket, tim
       timers.clearInterval(heartbeat);
       const captureEnded = captureConnection === connection;
       if (captureEnded) captureConnection = undefined;
-      if (event.code === 1008) {
+      if (event.code === 1008 || event.code === 4008) {
         stopped = true;
         void saveSession().catch(() => {});
         void chrome.alarms.clear('bridge-reconnect');
-        connectionState('error');
+        connectionState(captureEnded ? 'stale' : 'error');
         setStatus(captureEnded ? 'Сетевой захват завершён. Проверь его состояние и нажми «Подключить» для повтора.'
           : 'Подключение отклонено: проверь ключ или отключи другое расширение. Нажми «Подключить» для повтора.');
         return;
@@ -176,7 +176,7 @@ export function createConnection(chrome, { WebSocket = globalThis.WebSocket, tim
     connection.onmessage = async event => {
       if (connection !== socket || stopped) return;
       let msg;
-      try { msg = JSON.parse(event.data); } catch { connection.close(1008); return; }
+      try { msg = JSON.parse(event.data); } catch { connection.close(4008); return; }
       if (msg.type === 'cache-result') {
         if (cacheRequest?.id === msg.id) cacheRequest.finish(typeof msg.error === 'string' ? new Error(msg.error) : undefined, msg.result);
         return;
@@ -193,7 +193,7 @@ export function createConnection(chrome, { WebSocket = globalThis.WebSocket, tim
       }
       if (msg.type !== 'request' || typeof msg.id !== 'string' || msg.id.length > 100) return;
       const reply = value => { if (connection === socket && connection.readyState === WebSocket.OPEN) connection.send(JSON.stringify({ type: 'response', id: msg.id, ...value })); };
-      if (busy || collector?.active) { reply({ error: 'Browser adapter is busy' }); return; }
+      if (busy || (collector?.active && collector.status.state !== 'ready')) { reply({ error: 'Browser adapter is busy' }); return; }
       busy = true;
       connectionState('busy');
       try { reply({ result: await request(msg.method, msg.params || {}, connection) }); }
@@ -272,9 +272,9 @@ export function createConnection(chrome, { WebSocket = globalThis.WebSocket, tim
     if (change.status === 'complete') collector?.navigation(change);
     if (!tab || (change.url && targetFile(tab) !== fileKey)) {
       await stop(); await saveSession(); setStatus('Вкладка Figma закрыта или открыла другой файл.');
-    } else if (change.status === 'loading' && !busy) {
+    } else if (change.status === 'loading') {
       if (!collector?.navigation(change)) await collector?.stop('Вкладка перезагружается; прежний захват неполон.');
-      exportUncertain = false; await saveSession();
+      if (!busy) { exportUncertain = false; await saveSession(); }
     }
   }
   connectionState('disconnected');

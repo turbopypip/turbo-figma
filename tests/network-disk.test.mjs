@@ -193,3 +193,38 @@ test('default context preserves useful layout, hides wire diagnostics and shares
  assert.equal(again.metrics.selectionCacheHit,true);
  assert.equal(debug.nodes[0].stackMode,'HORIZONTAL');assert.equal(debug.nodes[0].layout.copyText,undefined);
 });
+
+test('monitored reads reject stale continuation, cancel in-flight decoding, and recover only with a new generation', async t => {
+ const store=await NetworkStore.create(await directory(t));
+ t.after(releaseNetworkSelection);
+ async function save(id) {
+  const writer=await store.begin(id,undefined,true);
+  await writer.append(0,Buffer.from(records([node(1),node(2,1),node(3,1)]).map(v=>JSON.stringify(v)+'\n').join('')));
+  await writer.commit({schemaReceived:true,joinStarted:true,joinEnded:true,sequenceComplete:true,droppedParts:0,receivedParts:1});
+ }
+ await save(identity);
+ await assert.rejects(readStoredNetworkSnapshot(store,identity,query),/STALE/);
+ const owner=store.observe(identity);
+ const page=await readStoredNetworkSnapshot(store,identity,{...query,maxNodes:1});
+ assert.equal(page.freshness.status,'observed');assert.ok(page.traversal.continuation);
+ owner.abort(new Error('STALE: multiplayer changed'));
+ await assert.rejects(readStoredNetworkSnapshot(store,identity,{...query,maxNodes:1,continuation:page.traversal.continuation}),/STALE|busy/);
+ // Idle invalidation disposes asynchronously; await the worker cleanup before recovery.
+ for(let i=0;i<100;i++) { try { await releaseNetworkSelection(); break; } catch { await new Promise(r=>setTimeout(r,5)); } }
+ const next={...identity,generation:2};await save(next);const nextOwner=store.observe(next);
+ await assert.rejects(readStoredNetworkSnapshot(store,identity,query),/STALE/);
+ const recovered=await readStoredNetworkSnapshot(store,next,query);
+ assert.equal(recovered.nodes.length,3);assert.equal(recovered.freshness.snapshot.generation,2);
+ await releaseNetworkSelection();
+ let invalidated=false;
+ await assert.rejects(readStoredNetworkSnapshot(store,next,query,undefined,()=>{
+  if(!invalidated){invalidated=true;nextOwner.abort(new Error('STALE: disconnected during read'));}
+ }),/STALE/);
+ assert.equal(invalidated,true);
+});
+
+test('historical stored captures explicitly disclaim current freshness',async t=>{
+ const store=await NetworkStore.create(await directory(t));t.after(releaseNetworkSelection);
+ await capture(store,records([node(1)]));
+ assert.equal((await readStoredNetworkSnapshot(store,identity,query)).freshness.status,'historical');
+});

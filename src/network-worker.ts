@@ -1,3 +1,4 @@
+import { LIVE_LIMITS, liveFields } from './network-live.js';
 import { createHash } from 'node:crypto';
 import { parentPort, workerData } from 'node:worker_threads';
 import { performance } from 'node:perf_hooks';
@@ -16,7 +17,7 @@ try {
   measure('worker-start');
   const selection = parseNetworkSelection(workerData.url);
   model = new DiskNetworkSnapshot(selection.fileKey, workerData.scratch);
-  let codec: BoundedWireDecoder | undefined, socket: string | undefined;
+  let codec: BoundedWireDecoder | undefined, liveCodec: BoundedWireDecoder | undefined, socket: string | undefined;
   let metadata: Record<string, any> = {};
   const consume = (event: any) => {
     if (event.kind === 'ws-open') {
@@ -34,6 +35,7 @@ try {
       const schema = inflateFrame(b.subarray(12), WIRE_LIMITS.schemaBytes);
       model!.setLayoutSchemaHash(createHash('sha256').update(schema).digest('hex'));
       codec = new BoundedWireDecoder(schema, nodeFields);
+      if (workerData.snapshot) liveCodec = new BoundedWireDecoder(schema, liveFields);
       return;
     }
     if (!codec) throw new Error('Missing wire schema');
@@ -68,8 +70,25 @@ try {
       workerHeapUsedMiB: Math.round(process.memoryUsage().heapUsed / 1048576) } } });
   };
   respond(workerData, false); result = undefined;
+  let lastQuery = workerData;
   if (workerData.retain) parentPort!.on('message', params => {
-    try { respond(params, true); }
+    try {
+      if (params.livePayload !== undefined) {
+        if (!liveCodec || typeof params.livePayload !== 'string' || params.livePayload.length > LIVE_LIMITS.recordBytes) throw new Error('Invalid live payload');
+        const bytes = Buffer.from(params.livePayload, 'base64');
+        if (!bytes.length || bytes.toString('base64') !== params.livePayload) throw new Error('Invalid live base64');
+        const changes: Record<string, any>[] = [];
+        const message = liveCodec.decode(inflateFrame(bytes, 1024 * 1024), n => {
+          if (changes.length >= LIVE_LIMITS.changes) throw new Error('Live change count exceeded');
+          changes.push(n);
+        }, true);
+        if (message.type !== 'NODE_CHANGES') throw new Error('Unsupported live message type');
+        model!.applyLive(changes);
+        // Validate the resulting selection before acknowledging; no partial result can escape.
+        model!.query({ ...lastQuery, offset: 0, maxNodes: 1 });
+        parentPort!.postMessage({ liveApplied: true });
+      } else { lastQuery = params; respond(params, true); }
+    }
     catch (error) { parentPort!.postMessage({ error: error instanceof Error ? error.message : 'Selection failed' }); }
   });
 } catch (error) {

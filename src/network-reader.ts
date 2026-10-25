@@ -15,7 +15,7 @@ export type NetworkMeasurement = { stage: string; elapsedMs: number; memory: Nod
 let busy = false;
 const projectDirectory = fileURLToPath(new URL('../', import.meta.url));
 
-type Retained = { key: string; worker: Worker; scratch: string; dead?: boolean; unregister?: () => void; idle?: NodeJS.Timeout };
+type Retained = { key: string; worker: Worker; scratch: string; dead?: boolean; watching?: boolean; liveRegistered?: boolean; unregister?: () => void; idle?: NodeJS.Timeout };
 let retained: Retained | undefined;
 async function dispose() {
   const old = retained; retained = undefined;
@@ -36,15 +36,19 @@ async function decode(params: Record<string, unknown>, cache: NetworkStore, sign
   if (signal?.aborted) throw new Error('Request cancelled');
   if (busy) throw new Error('Network snapshot reader is busy');
   busy = true;
+  let preserveIndex = false;
   try {
     clearTimeout(retained?.idle);
     return await cache.withRead(async () => {
       const selection = parseNetworkSelection(params.url as string);
       const snapshot = params.snapshot as SnapshotIdentity | undefined;
       const manifest = snapshot ? await cache.readManifest(snapshot) : undefined;
+      const freshness = manifest ? cache.freshness(manifest) : undefined;
+      const revision = manifest ? cache.liveRevision(manifest) : 0;
+      if (freshness) signal = signal ? AbortSignal.any([signal, freshness]) : freshness;
       const query = params as NetworkQuery;
       const maxBytes = responseBudget(query);
-      let source: unknown = [cache.root, manifest];
+      let source: unknown = [cache.root, manifest, revision];
       if (!snapshot) {
         const hash = createHash('sha256');
         for await (const chunk of createReadStream(params.captureFile as string, { signal })) hash.update(chunk);
@@ -54,10 +58,20 @@ async function decode(params: Record<string, unknown>, cache: NetworkStore, sign
       if (variables && (variables.size>8192 || [...variables.keys()].some(name=>name.length>256)))
         throw new Error('Network UI-kit limit: at most 8192 variables with names up to 256 characters');
       const binding = paginationBinding([source,query.variablesFile ?? null,variables ? variablesFingerprint(variables) : null], query);
-      const offset = query.continuation ? continuationOffset(query.continuation, binding) : query.offset;
+      let offset;
+      try { offset = query.continuation ? continuationOffset(query.continuation, binding) : query.offset; }
+      catch (error) {
+        // An old pagination token is a caller error, not a failure of the newly updated index.
+        preserveIndex = true;
+        if (retained) {
+          retained.idle = setTimeout(() => { void releaseNetworkSelection().catch(() => {}); }, 60000); retained.idle.unref();
+        }
+        throw error;
+      }
       if (query.continuation && query.offset !== 0) throw new Error('Use continuation without offset');
       params = { ...params, offset, maxBytes };
       const key = snapshot ? JSON.stringify([cache.root, manifest, selection.nodeId]) : undefined;
+      if (revision && (retained?.dead || key !== retained?.key)) throw new Error('STALE: updated selection index unavailable; recapture');
       if (retained?.dead || !key || key !== retained?.key || selection.fileKey !== snapshot?.fileKey) await dispose();
       // Recheck immutable source bytes on a hit: clearing or corruption cannot revive old data.
       if (retained && snapshot) {
@@ -90,7 +104,7 @@ async function decode(params: Record<string, unknown>, cache: NetworkStore, sign
           worker.off('message', message); worker.off('error', fail); worker.off('exit', exited);
           if (error) reject(error); else resolve(result);
         };
-        const abort = () => finish(new Error('Request cancelled'));
+        const abort = () => finish(freshness?.aborted && freshness.reason instanceof Error ? freshness.reason : new Error('Request cancelled'));
         const fail = (error: Error) => finish(error);
         const exited = () => finish(new Error('Network decoder exited without a result'));
         const message = (msg: any) => {
@@ -104,6 +118,49 @@ async function decode(params: Record<string, unknown>, cache: NetworkStore, sign
         if (signal?.aborted) abort();
         else if (reused) worker.postMessage(params);
       });
+      if (manifest) cache.freshness(manifest);
+      if (signal?.aborted) throw new Error('Request cancelled');
+      result.freshness = { status: freshness ? 'observed' : 'historical',
+        ...(snapshot ? { snapshot, revision } : {}),
+        message: freshness ? 'Observed capture with supported updates; unsupported traffic requires recapture.' : 'Saved capture only; current Figma state is not verified.' };
+      if (freshness && retained && !retained.watching) {
+        retained.watching = true;
+        const entry = retained;
+        const invalidate = () => { entry.dead = true; if (!busy) void releaseNetworkSelection().catch(() => {}); };
+        freshness.addEventListener('abort', invalidate, { once: true });
+        const unregister = entry.unregister;
+        entry.unregister = () => { freshness.removeEventListener('abort', invalidate); unregister?.(); };
+      }
+      if (freshness && snapshot && retained && !retained.liveRegistered) {
+        retained.liveRegistered = true;
+        const entry = retained;
+        const unregisterLive = cache.onLive(snapshot, async payload => {
+          if (busy || retained !== entry || entry.dead) throw new Error('STALE: selection reader busy or released');
+          busy = true; clearTimeout(entry.idle); worker.ref();
+          try {
+            await cache.withRead(() => new Promise<void>((resolve, reject) => {
+              const finish = (error?: Error) => {
+                clearTimeout(timer); worker.off('message', message); worker.off('error', fail); worker.off('exit', exited);
+                freshness.removeEventListener('abort', abort);
+                error ? reject(error) : resolve();
+              };
+              const fail = (error: Error) => finish(error);
+              const exited = () => finish(new Error('Live worker exited'));
+              const abort = () => finish(new Error('STALE: observation ended during update'));
+              const message = (msg: any) => finish(msg.liveApplied ? undefined : new Error(msg.error || 'Invalid live worker reply'));
+              const timer = setTimeout(() => finish(new Error('Live update timed out')), 10000);
+              worker.on('message', message); worker.once('error', fail); worker.once('exit', exited);
+              freshness.addEventListener('abort', abort, { once: true });
+              if (freshness.aborted) abort(); else worker.postMessage({ livePayload: payload });
+            }));
+            worker.unref();
+            entry.idle = setTimeout(() => { void releaseNetworkSelection().catch(() => {}); }, 60000); entry.idle.unref();
+          } catch (error) { await dispose(); throw error; }
+          finally { busy = false; }
+        });
+        const unregister = entry.unregister;
+        entry.unregister = () => { unregisterLive(); unregister?.(); };
+      }
       if (!key) await dispose();
       else {
         worker.unref();
@@ -142,9 +199,11 @@ async function decode(params: Record<string, unknown>, cache: NetworkStore, sign
         finalize();
       }
       if (Buffer.byteLength(JSON.stringify(result)) > maxBytes) throw new Error('Response metadata exceeds byte limit; increase maxBytes');
+      if (manifest) cache.freshness(manifest);
+      if (signal?.aborted) throw new Error('Request cancelled');
       return result;
     });
-  } catch (error) { await dispose(); throw error; }
+  } catch (error) { if (!preserveIndex) await dispose(); throw error; }
   finally { busy = false; }
 }
 

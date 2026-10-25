@@ -16,7 +16,7 @@ const emit = value => { if (process.connected) process.send(value); };
 const metrics = stage => ({ stage, memory: process.memoryUsage(), cpu: process.cpuUsage(),
   processPeakRssBytes: process.resourceUsage().maxRSS * 1024 });
 let completedCaptures = 0, completedSnapshot;
-const captureStore = { begin: async (...args) => {
+const captureStore = { observe: id => cache.observe(id), renewObservation: owner => cache.renewObservation(owner), applyLive: (...args) => cache.applyLive(...args), begin: async (...args) => {
   emit({ type: 'capture-boundary', stage: 'capture-begin', atMs: performance.now() });
   const writer = await cache.begin(...args);
   return { ...writer, get state() { return writer.state; }, commit: async (...values) => {

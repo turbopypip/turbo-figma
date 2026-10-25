@@ -9,7 +9,7 @@ async function refresh() {
   try {
     const [value, tabs] = await Promise.all([send('status'), chrome.tabs.query({ active: true, currentWindow: true })]);
     if (pending) return;
-    const active = ['starting', 'capturing', 'stopping', 'finishing'].includes(value.capture?.state);
+    const active = ['starting', 'capturing', 'stopping', 'finishing', 'ready', 'updating'].includes(value.capture?.state);
     status.textContent = lastError || value.capture?.message || 'Сетевой захват недоступен.';
     start.disabled = active || value.state !== 'connected' || value.tabId !== tabs[0]?.id || value.capture?.state === 'unavailable';
     reload.disabled = start.disabled;

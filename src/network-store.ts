@@ -16,9 +16,9 @@ export type FrameIdentity = z.infer<typeof frameSchema>;
 const ownerSchema = z.object({ owner: z.literal('figma-kilo-mcp'), version: z.literal(1), snapshot: identitySchema, frame: frameSchema.optional() }).strict();
 export const CACHE_RETENTION = { maxBytes: 1024 * 1024 * 1024, maxAgeMs: 7 * 24 * 60 * 60 * 1000 } as const;
 export type CacheInfo = { bytes: number; generations: number; incomplete: number; protectedEntries: number };
-type Coordinator = { busy: boolean; writerActive: boolean; readers: number; invalidators?: Set<() => Promise<void>> };
+type Coordinator = { busy: boolean; writerActive: boolean; readers: number; observation?: { key: string; controller: AbortController; expires: number; ttl: number; revision: number; updating: boolean }; liveHandler?: { key: string; apply: (payload: string) => Promise<void> }; invalidators?: Set<() => Promise<void>> };
 const coordinators = new Map<string, WeakRef<Coordinator>>();
-const manifestSchema = z.object({ version: z.literal(1), status: z.literal('ready'), snapshot: identitySchema, frame: frameSchema.optional(),
+const manifestSchema = z.object({ version: z.literal(1), status: z.literal('ready'), monitored: z.literal(true).optional(), snapshot: identitySchema, frame: frameSchema.optional(),
   parts: z.array(z.object({ bytes: z.number().int().min(1).max(MAX_PART_BYTES),
     sha256: z.string().regex(/^[a-f0-9]{64}$/) }).strict()).min(1).max(MAX_PARTS) }).strict();
 export type SnapshotManifest = z.infer<typeof manifestSchema>;
@@ -89,6 +89,61 @@ export class NetworkStore {
     callbacks.add(callback);
     return () => { callbacks.delete(callback); };
   }
+  /** Only a live bridge owner can vouch for a monitored generation. Never persisted across restart. */
+  observe(snapshot: SnapshotIdentity, ttl = 15000): AbortController {
+    this.coordinator.observation?.controller.abort(new Error('STALE: capture generation replaced; reload and capture again'));
+    const controller = new AbortController();
+    this.coordinator.observation = { key: key(identity(snapshot)), controller, ttl, revision: 0, updating: false, expires: performance.now() + ttl };
+    return controller;
+  }
+  renewObservation(controller: AbortController) {
+    const observation = this.coordinator.observation;
+    if (!observation || observation.controller !== controller) throw new Error('STALE: observation replaced');
+    this.checkObservation(observation);
+    observation.expires = performance.now() + observation.ttl;
+  }
+  private checkObservation(observation: NonNullable<Coordinator['observation']>) {
+    if (performance.now() >= observation.expires) observation.controller.abort(new Error('STALE: observation expired; reload and capture again'));
+    observation.controller.signal.throwIfAborted();
+  }
+  freshness(manifest: SnapshotManifest): AbortSignal | undefined {
+    if (!manifest.monitored) return undefined;
+    const observation = this.coordinator.observation;
+    if (!observation || observation.key !== key(manifest.snapshot)) throw new Error('STALE: no live observation; reload Figma and capture again');
+    this.checkObservation(observation);
+    if (observation.updating) throw new Error('STALE: live update in progress; retry after acknowledgement');
+    return observation.controller.signal;
+  }
+  liveRevision(manifest: SnapshotManifest): number {
+    this.freshness(manifest);
+    return manifest.monitored ? this.coordinator.observation!.revision : 0;
+  }
+  onLive(snapshot: SnapshotIdentity, apply: (payload: string) => Promise<void>): () => void {
+    const handler = { key: key(snapshot), apply };
+    this.coordinator.liveHandler = handler;
+    return () => {
+      if (this.coordinator.liveHandler !== handler) return;
+      this.coordinator.liveHandler = undefined;
+      const owner = this.coordinator.observation;
+      if (owner?.key === handler.key && owner.revision) owner.controller.abort(new Error('STALE: updated index released; recapture'));
+    };
+  }
+  async applyLive(snapshot: SnapshotIdentity, controller: AbortController, payload: string) {
+    const owner = this.coordinator.observation, handler = this.coordinator.liveHandler;
+    if (!owner || owner.controller !== controller || owner.key !== key(snapshot)) throw new Error('STALE: live owner mismatch');
+    this.checkObservation(owner);
+    if (owner.updating || !handler || handler.key !== owner.key) throw new Error('STALE: no idle selection index; recapture');
+    owner.updating = true;
+    try {
+      await handler.apply(payload);
+      this.checkObservation(owner);
+      owner.revision++;
+      owner.expires = performance.now() + owner.ttl;
+    } catch (error) {
+      owner.controller.abort(new Error('STALE: live update failed; recapture'));
+      throw error;
+    } finally { owner.updating = false; }
+  }
   private async guard() {
     for (const [directory, stamp] of this.stamps) {
       if (await directoryStamp(directory) !== stamp) throw new Error('Cache directory was replaced');
@@ -100,7 +155,7 @@ export class NetworkStore {
     try { await this.guard(); return await run(); }
     finally { this.busy = false; }
   }
-  async begin(value: SnapshotIdentity, selection?: FrameIdentity) {
+  async begin(value: SnapshotIdentity, selection?: FrameIdentity, monitored = false) {
     const snapshot = identity(value), frame = frameIdentity(selection);
     return this.operation(async () => {
       this.assertIdle();
@@ -146,7 +201,7 @@ export class NetworkStore {
         commit: async (evidence: Omit<InitialSnapshotEvidence, 'persistedParts' | 'metadataCommitted'>, signal?: AbortSignal) => run(async () => {
           const next = transitionSession(state, { type: 'complete', snapshot,
             evidence: { ...evidence, persistedParts: parts.length, metadataCommitted: true } });
-          const manifest: SnapshotManifest = { version: 1, status: 'ready', snapshot, ...(frame ? { frame } : {}), parts };
+          const manifest: SnapshotManifest = { version: 1, status: 'ready', ...(monitored ? { monitored: true as const } : {}), snapshot, ...(frame ? { frame } : {}), parts };
           const encoded = Buffer.from(JSON.stringify(manifest));
           if (encoded.length > MAX_METADATA_BYTES) throw new Error('Metadata size limit exceeded');
           await writeExclusive(path.join(directory, 'manifest.tmp'), encoded);
