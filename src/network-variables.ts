@@ -1,4 +1,5 @@
 import { mapContextVariables } from './variables.js';
+import { instanceScale } from './network-scale.js';
 
 type Value = Record<string, any>;
 const fields:Record<string,string>={CORNER_RADIUS:'cornerRadius',STROKE_WEIGHT:'strokeWeight',STACK_SPACING:'stackSpacing',STACK_COUNTER_SPACING:'stackCounterSpacing',
@@ -25,12 +26,17 @@ const sameValue=(a:any,b:any):boolean=>{
 export function nativeVariableBindings(node: Value, resolveVariable?: (data:Value)=>Value) {
   const references: Value[] = [], unresolved: string[] = [];
   let bytes=0;
-  const add = (path: string, data: Value, captured?:unknown) => {
+  const add = (path: string, data: Value, captured?:unknown, length = false) => {
     if(bytes>100000)return;
     if (references.length >= 128) { if (!unresolved.includes('referenceLimit')) unresolved.push('referenceLimit'); return; }
     const guid = data?.value?.alias?.guid;
     const id = guid && [guid.sessionID,guid.localID].every(v=>Number.isSafeInteger(v)&&v>=0) ? `${guid.sessionID}:${guid.localID}` : undefined;
     let resolution=resolveVariable?.(data);
+    if (length && resolution?.status === 'resolved' && typeof resolution.value === 'number' && node.instanceScaleFactor !== undefined) {
+      const scale = instanceScale(node.instanceScaleFactor), value = resolution.value * scale;
+      if (!Number.isFinite(value)) throw new Error('Instance scale variable overflow');
+      resolution = {...resolution, unscaledValue:resolution.value, instanceScaleFactor:scale, value};
+    }
     if(resolution?.status==='resolved') {
       resolution={...resolution,definitionStatus:'resolved',capturedValueCheck:captured===undefined?'unavailable':sameValue(captured,resolution.value)?'matched':'conflict'};
       if(captured!==undefined&&!sameValue(captured,resolution.value)) {
@@ -47,13 +53,14 @@ export function nativeVariableBindings(node: Value, resolveVariable?: (data:Valu
     const entries = value.variableConsumptionMap?.entries;
     if (Array.isArray(entries)) {
       if (entries.length>128) unresolved.push(`${prefix}consumptionLimit`);
-      for (const e of entries.slice(0,128)) add(`${prefix}${e.variableField ?? `nodeField:${e.nodeField ?? 'unknown'}`}`,e.variableData,capturedField(value,e.variableField));
+      for (const e of entries.slice(0,128)) if(e.variableData!==undefined) add(`${prefix}${e.variableField ?? `nodeField:${e.nodeField ?? 'unknown'}`}`,e.variableData,capturedField(value,e.variableField),
+        (Object.hasOwn(fields,e.variableField) && !['VISIBLE','OPACITY'].includes(e.variableField)) || ['WIDTH','HEIGHT','MIN_WIDTH','MIN_HEIGHT','MAX_WIDTH','MAX_HEIGHT','LINE_HEIGHT','LETTER_SPACING'].includes(e.variableField));
     }
     for (const field of ['fillPaints','strokePaints','effects']) {
       const items=value[field]; if (!Array.isArray(items)) continue;
       if(items.length>128)unresolved.push(`${prefix}${field}.limit`);
       items.slice(0,128).forEach((p:Value,i:number)=>{
-        for(const [key,data] of Object.entries(p)) if(key.endsWith('Var')&&key!=='stopsVar') add(`${prefix}${field}[${i}].${key}`,data as Value,p[key.slice(0,-3)]);
+        for(const [key,data] of Object.entries(p)) if(key.endsWith('Var')&&key!=='stopsVar') add(`${prefix}${field}[${i}].${key}`,data as Value,p[key.slice(0,-3)],field==='effects'&&['radiusVar','spreadVar'].includes(key));
         for(const stopField of ['stops','stopsVar']) if(Array.isArray(p[stopField])) {
           if(p[stopField].length>128)unresolved.push(`${prefix}${field}[${i}].${stopField}.limit`);
           p[stopField].slice(0,128).forEach((stop:Value,j:number)=>{if(stop.colorVar)add(`${prefix}${field}[${i}].${stopField}[${j}].colorVar`,stop.colorVar,stop.color);});
@@ -87,6 +94,8 @@ export function effectiveVariableNode(node: Value, bindings: ReturnType<typeof n
       }
     };
     for(const entry of raw.variableConsumptionMap?.entries??[]) {
+      // A keyed wire entry without data clears the binding; keep its literal.
+      if(entry.variableData===undefined)continue;
       const field=entry.variableField, ref=refs.get(`${prefix}${field??`nodeField:${entry.nodeField??'unknown'}`}`);
       let path:string[]|undefined, type='FLOAT';
       if(fields[field]) {path=[fields[field]];if(field==='VISIBLE')type='BOOLEAN';}

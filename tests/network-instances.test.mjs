@@ -33,7 +33,7 @@ test('disk traversal expands instances in order, applies visibility and parent s
  assert.equal(model.query({...q,offset:2,maxNodes:1}).nodes[0].id,'I1:2;1:200');
  assert.equal(model.query({...q,depth:1}).traversal.pendingDepthCount,1);
 });
-test('component assignments preserve false, merge by definition ID, swap symbols and reject unverified scaling',()=>{
+test('component assignments preserve false, merge by definition ID, swap symbols and reject invalid scaling',()=>{
  const instance={guid:guid(2),type:'INSTANCE',symbolData:{symbolID:guid(100),uniformScaleFactor:1},componentPropAssignments:[{defID:guid(9),value:{boolValue:false}},{defID:guid(8),value:{guidValue:guid(102)}}]};
  const r=enterInstance(instance,'1:2',()=>master);
  const hidden=instanceNode({guid:guid(3),visible:true,componentPropRefs:[{defID:guid(9),componentPropNodeField:'VISIBLE'}]},r.context);
@@ -42,7 +42,7 @@ test('component assignments preserve false, merge by definition ID, swap symbols
  assert.deepEqual(swap.overriddenSymbolID,guid(102));
  const merged=instanceNode(instance,{scopes:[{overrides:[patch([2],{componentPropAssignments:[{defID:guid(9),value:{boolValue:true}}]})],derived:[]}],prefix:'I1:1',symbols:[]});
  assert.equal(merged.componentPropAssignments.length,2);assert.equal(merged.componentPropAssignments[0].value.boolValue,true);
- assert.throws(()=>enterInstance({...instance,symbolData:{...instance.symbolData,uniformScaleFactor:2}},'1:2',()=>master),/Scaled instance/);
+ assert.throws(()=>enterInstance({...instance,symbolData:{...instance.symbolData,uniformScaleFactor:0}},'1:2',()=>master),/Invalid instance scale/);
 });
 
 test('component text parameters preserve empty strings, defaults, and report missing/unsupported references',()=>{
@@ -99,4 +99,40 @@ test('repeated large component dependencies exhaust a bounded read budget withou
  model.acceptMessage({type:'NODE_CHANGES'});model.acceptMessage({type:'JOIN_END'});model.finish();
  assert.throws(()=>model.query({format:'context',url:'https://www.figma.com/design/test/File?node-id=1-1',depth:2,maxNodes:1,offset:0,includeHidden:false}),/dependency read budget/);
  assert.ok(model.selectionCacheStats().bytes<100000);
+});
+
+test('scaled disk traversal keeps rendered geometry and styles stable across pages and cache hits',async t=>{
+ const root=path.resolve('.cache/figma-network/tests');await mkdir(root,{recursive:true});const dir=await mkdtemp(path.join(root,'scaled-'));
+ const model=new DiskNetworkSnapshot('test',dir);t.after(async()=>{model.close();await rm(dir,{recursive:true,force:true});});
+ const node=(id,parent,extra)=>({guid:guid(id),phase:'CREATED',...(parent?{parentIndex:{guid:guid(parent),position:String(id)}}:{}),...extra});
+ model.acceptMessage({type:'JOIN_START'});
+ for(const n of [node(1,null,{type:'INSTANCE',size:{x:50,y:20},transform:{m00:1,m01:0,m02:100,m10:0,m11:1,m12:200},symbolData:{symbolID:guid(100),uniformScaleFactor:.5},
+  derivedSymbolData:[patch([20],{size:{x:30,y:10},fontSize:11})]}),
+  node(100,null,{type:'SYMBOL',size:{x:100,y:40},stackMode:'HORIZONTAL',stackSpacing:8}),
+  node(200,100,{type:'TEXT',overrideKey:guid(20),size:{x:50,y:20},fontSize:20,textData:'label',transform:{m00:1,m01:0,m02:6,m10:0,m11:1,m12:8}}),
+  node(300,100,{type:'RECTANGLE',size:{x:10,y:10},cornerRadius:4})])model.acceptNode(n);
+ model.acceptMessage({type:'NODE_CHANGES'});model.acceptMessage({type:'JOIN_END'});model.finish();
+ const q={format:'debug',url:'https://www.figma.com/design/test/File?node-id=1-1',depth:10,maxNodes:100,offset:0,includeHidden:false};
+ const whole=model.query(q);assert.equal(whole.traversal.unresolvedInstanceCount,0);
+ assert.equal(whole.nodes[0].layout.geometry.size.width,50);assert.equal(whole.nodes[0].stackSpacing,4);
+ assert.equal(whole.nodes[1].layout.geometry.size.width,30);assert.equal(whole.nodes[1].style.css['font-size'],'11px');
+ assert.equal(whole.nodes[1].transform.m02,3);assert.equal(whole.nodes[2].style.css['border-radius'],'2px');
+ const paged=whole.nodes.map((_,offset)=>model.query({...q,offset,maxNodes:1}).nodes[0]);
+ assert.deepEqual(paged,whole.nodes);assert.deepEqual(model.query(q).nodes,whole.nodes);
+ assert.equal(model.selectionCacheStats().nodes,1);
+});
+
+test('nested variant property inherits component-set definition under its local ID',()=>{
+ const set={guid:guid(99),type:'SYMBOL',componentPropDefs:[{id:guid(5),initialValue:{textValue:{characters:'1'}}}]};
+ const variant={...master,parentIndex:{guid:guid(99)},componentPropDefs:[{id:guid(6),parentPropDefId:guid(5)}]};
+ const instance={guid:guid(10),type:'INSTANCE',symbolData:{symbolID:guid(100)}};
+ const read=id=>id==='1:100'?variant:id==='1:99'?set:undefined;
+ const text={guid:guid(20),type:'TEXT',componentPropRefs:[{defID:guid(6),componentPropNodeField:'TEXT_DATA'}]};
+ const r=enterInstance(instance,'I1:1;1:10',read,{scopes:[],prefix:'I1:1',symbols:[]});
+ assert.equal(instanceNode(text,r.context).textData.characters,'1');assert.equal(instanceNode(text,r.context).instanceUnresolved,undefined);
+ const assigned=enterInstance({...instance,componentPropAssignments:[{defID:guid(6),varValue:{value:{textValue:''}}}]},'1:10',read);
+ assert.equal(instanceNode(text,assigned.context).textData,'');
+ const missing=enterInstance(instance,'1:10',id=>id==='1:100'?variant:undefined);
+ assert.equal(instanceNode(text,missing.context).instanceUnresolved,true);
+ assert.equal(variant.componentPropDefs[0].initialValue,undefined);
 });

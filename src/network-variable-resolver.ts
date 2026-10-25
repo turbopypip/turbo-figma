@@ -1,6 +1,6 @@
 type Value=Record<string,any>;
 export type ModeContext=Map<string,{modeId:string;sourceNodeId:string;order?:number}>;
-export type VariableReader={node:(id:string)=>Value|undefined;asset:(type:string,ref:Value)=>string|undefined};
+export type VariableReader={defaultModeAllowed?:boolean;node:(id:string)=>Value|undefined;asset:(type:string,ref:Value)=>string|undefined};
 const id=(g:any):string|undefined=>g&&[g.sessionID,g.localID].every(v=>Number.isSafeInteger(v)&&v>=0)?`${g.sessionID}:${g.localID}`:undefined;
 const refKey=(ref:Value)=>id(ref?.guid)?`g:${id(ref.guid)}`:typeof ref?.assetRef?.key==='string'?`a:${JSON.stringify([ref.assetRef.key,ref.assetRef.version??null])}`:undefined;
 export function inheritVariableModes(parent:ModeContext,node:Value,nodeId:string):ModeContext {
@@ -63,7 +63,12 @@ export function resolveNativeVariable(data:Value,modes:ModeContext,read:Variable
     const nearest=Math.max(0,...candidates.map(v=>v.order??0));
     const explicit=candidates.filter(v=>(v.order??0)===nearest);
     const conflict=new Set(explicit.map(v=>v.modeId)).size>1;
-    const selected=conflict?undefined:explicit[0]?.modeId??(raw.length===1?modeIds[0]:undefined);
+    // The leftmost mode is the collection default. Never infer it from values,
+    // names or wire array order: require captured, unique ordering metadata.
+    const positions=raw.map(m=>m.sortPosition);
+    const ordered=positions.every(p=>typeof p==='string'&&p.length>0&&p.length<=256)&&new Set(positions).size===raw.length;
+    const defaultMode=ordered&&read.defaultModeAllowed!==false?id([...raw].sort((a,b)=>a.sortPosition<b.sortPosition?-1:1)[0].id):undefined;
+    const selected=conflict?undefined:explicit[0]?.modeId??(raw.length===1?modeIds[0]:defaultMode);
     const modeValues:Value[]=raw.map(m=>{
       const perMode=new Map(activeModes);
       for(const key of keys)perMode.set(key,{modeId:id(m.id)!,sourceNodeId:'collection-mode-value',order:nearest+1});
@@ -76,7 +81,7 @@ export function resolveNativeVariable(data:Value,modes:ModeContext,read:Variable
     const effective=chosen??(!selected&&!conflict&&common?modeValues[0]:undefined);
     if(effective?.status==='resolved'&&node.variableResolvedType&&node.variableResolvedType!==effective.dataType)
       return {...base,collection,modes:modeValues,status:'unresolved',reason:'Resolved value type does not match variable definition'};
-    return {...base,collection,modeSelection:conflict?'conflicting':explicit.length?'explicit-or-inherited':raw.length===1?'single-mode':'unknown',
+    return {...base,collection,modeSelection:conflict?'conflicting':explicit.length?'explicit-or-inherited':raw.length===1?'single-mode':defaultMode?'collection-default':'unknown',
       ...(explicit[0]?{modeSourceNodeId:explicit[0].sourceNodeId}:{}),...(chosen?{modeId:chosen.id,modeName:chosen.name}:{}),modes:modeValues,
       ...(effective?.status==='resolved'?{status:'resolved',value:effective.value,dataType:effective.dataType,modeIndependent:!chosen,chain:[chainEntry,...(chosen?effective.chain??[]:[])]}:
         {status:'unresolved',reason:chosen?.reason??(selected?'Selected mode absent from collection':'Active mode is not established'),chain:[chainEntry]})};

@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "minimum_chrome_version": "125",
   "name": "Figma Kilo Browser Bridge",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Connect an explicitly selected Figma tab to a local Kilo CLI MCP server.",
   "permissions": ["debugger", "alarms", "storage", "activeTab", "scripting", "clipboardRead", "clipboardWrite"],
   "action": { "default_title": "Figma ↔ Kilo CLI", "default_popup": "popup.html" },

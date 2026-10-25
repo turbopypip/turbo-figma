@@ -232,7 +232,7 @@ export class DiskNetworkSnapshot {
       return length ? this.node(id,false) : undefined;
     };
     let variableReads=0,variableBytes=0;
-    const variableReader={asset:(type:string,ref:Record<string,any>)=>this.variableAssets.get(type,ref),node:(id:string)=>{
+    const variableReader={defaultModeAllowed:true,asset:(type:string,ref:Record<string,any>)=>this.variableAssets.get(type,ref),node:(id:string)=>{
       const length=this.slot(id)?.buffer.readUInt32LE(32);
       if(++variableReads>20000||(variableBytes+=length??0)>64*1024*1024)throw new Error('Variable dependency read budget exceeded');
       return length?this.node(id,false):undefined;
@@ -245,7 +245,7 @@ export class DiskNetworkSnapshot {
       const id = safeId(ancestor);
       if (ancestorIds.has(id) || ancestors.length >= 64) throw new Error('Cycle in ancestors or depth limit exceeded');
       ancestorIds.add(id);
-      if (!this.slot(id)?.buffer.readUInt32LE(32)) break;
+      if (!this.slot(id)?.buffer.readUInt32LE(32)) { variableReader.defaultModeAllowed=false; break; }
       const node = this.node(id,false); ancestors.push({id,node:{type:node.type,resizeToFit:node.resizeToFit,transform:node.transform,variableModeBySetMap:node.variableModeBySetMap}});
       if (node.type === 'CANVAS') break;
       ancestor = node.parentIndex?.guid;

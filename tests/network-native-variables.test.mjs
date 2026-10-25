@@ -140,3 +140,43 @@ test('disk traversal applies visibility binding before filtering hidden nodes an
  const q={format:'context',url:'https://www.figma.com/design/test/File?node-id=1-1',depth:1,maxNodes:10,offset:0,includeHidden:false};
  for(let i=0;i<2;i++){const r=model.query(q);assert.equal(r.nodes.length,1);assert.equal(r.nodes[0].layout.css.width,'80px');assert.equal(r.nodes[0].hidden,false);}
 });
+
+test('collection default uses captured sort positions, never array order or color matching',()=>{
+ const ordered={...collection,variableSetModes:[{id:g(11),name:'Dark',sortPosition:'"'},{id:g(10),name:'Light',sortPosition:'!'}]};
+ const read=makeReader([ordered,variable(1,'Distinct',literal(8),literal(16))]);
+ const r=resolveNativeVariable(alias(1),new Map(),read);
+ assert.equal(r.value,8);assert.equal(r.modeSelection,'collection-default');assert.equal(r.modeId,'1:10');
+ assert.equal(resolveNativeVariable(alias(1),new Map(),{...read,defaultModeAllowed:false}).status,'unresolved');
+ assert.equal(resolveNativeVariable(alias(1),inheritVariableModes(new Map(),mode(11),'page'),read).value,16);
+ const ambiguous={...ordered,variableSetModes:ordered.variableSetModes.map(m=>({...m,sortPosition:'!'}))};
+ assert.equal(resolveNativeVariable(alias(1),new Map(),makeReader([ambiguous,variable(1,'Distinct',literal(8),literal(16))])).status,'unresolved');
+});
+
+test('cleared consumption entries keep literal text, font and radii without inventing bindings',async()=>{
+ const {effectiveVariableNode}=await import('../dist/network-variables.js');
+ const n={textData:{characters:'LIVE'},fontName:{family:'Inter',style:'Regular'},rectangleTopLeftCornerRadius:12,
+ variableConsumptionMap:{entries:['TEXT_DATA','FONT_STYLE','RECTANGLE_TOP_LEFT_CORNER_RADIUS'].map(variableField=>({variableField}))}};
+ const bindings=nativeVariableBindings(n,()=>{throw new Error('Cleared entries must not resolve');});
+ assert.deepEqual(bindings.references,[]);assert.deepEqual(effectiveVariableNode(n,bindings),n);
+ const malformed={...n,variableConsumptionMap:{entries:[{variableField:'TEXT_DATA',variableData:{}}]}};
+ assert.equal(nativeVariableBindings(malformed).references.length,1);
+});
+
+test('page and frame modes flow through expanded components, with a component override taking precedence',async t=>{
+ const root=path.resolve('.cache/figma-network/tests');await mkdir(root,{recursive:true});const dir=await mkdtemp(path.join(root,'mode-inheritance-'));
+ const model=new DiskNetworkSnapshot('test',dir);t.after(async()=>{model.close();await rm(dir,{recursive:true,force:true});});
+ const child=(n,parent,extra)=>({guid:g(n),parentIndex:{guid:g(parent),position:String(n)},...extra});
+ model.acceptMessage({type:'JOIN_START'});
+ const nodes=[{guid:g(200),type:'CANVAS',...mode(11)},child(201,200,{type:'FRAME'}),
+ child(202,201,{type:'INSTANCE',symbolData:{symbolID:g(300)}}),child(203,201,{type:'INSTANCE',symbolData:{symbolID:g(301)}}),
+ {guid:g(300),type:'SYMBOL'},{guid:g(301),type:'SYMBOL',...mode(10)},
+ child(302,300,{type:'RECTANGLE',variableConsumptionMap:{entries:[{variableField:'WIDTH',variableData:alias(1)}]}}),
+ child(303,301,{type:'RECTANGLE',variableConsumptionMap:{entries:[{variableField:'WIDTH',variableData:alias(1)}]}}),
+ collection,variable(1,'width',literal(8),literal(16))];
+ for(const n of nodes)model.acceptNode({...n,phase:'CREATED'});
+ model.acceptMessage({type:'NODE_CHANGES'});model.acceptMessage({type:'JOIN_END'});model.finish();
+ const q={format:'debug',url:'https://www.figma.com/design/test/File?node-id=1-201',depth:10,maxNodes:100,offset:0,includeHidden:false};
+ const result=model.query(q),refs=result.nodes.flatMap(n=>n.style.nativeBindings.references);
+ assert.deepEqual(Object.fromEntries(refs.map(r=>[r.modeSourceNodeId,r.value])),{'1:200':16,'1:203':8});
+ assert.deepEqual(model.query(q).nodes,result.nodes);
+});
