@@ -11,6 +11,7 @@ import { mkdir,mkdtemp,writeFile,rm } from 'node:fs/promises';
 import path from 'node:path';
 import { NetworkStore } from '../dist/network-store.js';
 import { zstd } from './wire-fixture.mjs';
+const publicStyle=s=>({...s,nativeBindings:{complete:s.nativeBindings.complete,unresolved:s.nativeBindings.unresolved,references:s.nativeBindings.references.map(r=>({path:r.path,status:r.status,...(r.reason?{reason:r.reason}:{})}))}});
 const paint=(extra={})=>({type:'SOLID',visible:true,opacity:1,blendMode:'NORMAL',color:{r:1,g:0,b:0,a:1},...extra});
 const font={family:'Sample',style:'Regular'};
 const base={type:'TEXT',fontName:font,fontSize:20,lineHeight:{value:120,units:'PERCENT'},letterSpacing:{value:-2,units:'PERCENT'},fillPaints:[paint()],
@@ -110,7 +111,7 @@ test('styled context survives replay/cache/pagination within UTF-8 byte budget, 
  await writer.commit({schemaReceived:true,joinStarted:true,joinEnded:true,sequenceComplete:true,droppedParts:0,receivedParts:1});
  const first=await readStoredNetworkSnapshot(store,identity,{...params,format:'context',maxBytes:150000});
  const cached=await readStoredNetworkSnapshot(store,identity,{...params,format:'debug',maxBytes:150000});
- assert.equal(cached.metrics.selectionCacheHit,true);assert.deepEqual(cached.nodes[0].style,first.nodes[0].style);
+ assert.equal(cached.metrics.selectionCacheHit,true);assert.deepEqual(publicStyle(cached.nodes[0].style),first.nodes[0].style);
  const variablesFile=path.join(dir,'variables.scss');
  await writeFile(variablesFile,':root { --mimir-size-text-a:20px; --mimir-size-text-b:24px; --red:#ff0000; }');
  const query={...params,variablesFile,format:'context',maxBytes:150000,maxNodes:2};
@@ -119,7 +120,7 @@ test('styled context survives replay/cache/pagination within UTF-8 byte budget, 
  assert.equal(mapped.nodes[0].style.text.ranges[1].css['font-size'],'var(--mimir-size-text-b)');
  assert.ok(mapped.traversal.continuation);
  const mappedDebug=await readStoredNetworkSnapshot(store,identity,{...query,format:'debug'});
- assert.equal(mappedDebug.metrics.selectionCacheHit,true);assert.deepEqual(mappedDebug.nodes[0].style,mapped.nodes[0].style);
+ assert.equal(mappedDebug.metrics.selectionCacheHit,true);assert.deepEqual(publicStyle(mappedDebug.nodes[0].style),mapped.nodes[0].style);
  const literal=await readStoredNetworkSnapshot(store,identity,{...query,variablesFile:undefined});
  assert.equal(literal.nodes[0].style.text.ranges[1].css['font-size'],'24px');
  await assert.rejects(readStoredNetworkSnapshot(store,identity,{...query,variablesFile:undefined,continuation:mapped.traversal.continuation}),/continuation/);

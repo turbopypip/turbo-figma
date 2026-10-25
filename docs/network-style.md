@@ -59,8 +59,9 @@ TL/TR/BR/BL. Индивидуальные радиусы имеют приори
 - AUTO line-height, variable fonts, сложная типографика, списки и абзацная
   раскладка не синтезируются. Неизвестные веса/единицы остаются unresolved.
   Вертикальное выравнивание хранится как исходное значение без CSS vertical-align.
-- Привязки переменных Figma не разрешаются; paints помечаются
-  variableBindingUnresolved. Сопоставление с UI-kit и отдельные нативные ссылки реализованы в TODO 13: [контракт](network-variables.md).
+- Привязки переменных Figma разрешаются по доступным определениям снимка:
+  [network-native-variables.md](network-native-variables.md). Paints содержат
+  variableBindingPresent и актуальный variableBindingUnresolved. Сопоставление с UI-kit и отдельные нативные ссылки реализованы в TODO 13: [контракт](network-variables.md).
 - Пропущенные defaults и отсутствующие коллекции нельзя трактовать как нули,
   прозрачные paints или отсутствие эффектов. Это начальный снимок, не live-state.
 

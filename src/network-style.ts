@@ -1,12 +1,12 @@
-import { nativeVariableBindings } from './network-variables.js';
-/** Conservative visual projection. No asset downloads, variable resolution or font-name heuristics. */
+import { effectiveVariableNode, nativeVariableBindings } from './network-variables.js';
+/** Conservative visual projection after native value resolution; no asset downloads or font-name heuristics. */
 type Value = Record<string, any>;
 const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 const nonnegative = (v: unknown): v is number => finite(v) && v >= 0;
 const unit = (v: unknown): v is number => finite(v) && v >= 0 && v <= 1;
 const number = (v: number) => String(Math.abs(v) < 1e15 ? Math.round(v * 1e6) / 1e6 : v);
 const pick = (v: Value, keys: readonly string[]) => Object.fromEntries(keys.filter(k => v[k] !== undefined).map(k => [k,v[k]]));
-export const styleFields = ['variableConsumptionMap','styleID','effects','blendMode','rectangleTopLeftCornerRadius','rectangleTopRightCornerRadius',
+export const styleFields = ['backingVariableSetId','backingVariableId','overriddenVariableId','key','version','variableModeBySetMap','variableSetModes','variableSetID','variableResolvedType','variableDataValues','variableTokenName','variableConsumptionMap','styleID','effects','blendMode','rectangleTopLeftCornerRadius','rectangleTopRightCornerRadius',
   'rectangleBottomRightCornerRadius','rectangleBottomLeftCornerRadius','rectangleCornerRadiiIndependent','cornerSmoothing',
   'borderStrokeWeightsIndependent','borderTopWeight','borderRightWeight','borderBottomWeight','borderLeftWeight',
   'dashPattern','strokeCap','strokeJoin','textCase','textDecoration','fontVariations','fontVariantSlashedZero',
@@ -21,8 +21,10 @@ export function keepStyleField(type: string, field: string): boolean {
 }
 const textFields = ['fontName','fontSize','lineHeight','letterSpacing','textAlignHorizontal','textAlignVertical',
   'textCase','textDecoration','fontVariations','fontVariantSlashedZero','paragraphSpacing','paragraphIndent','fillPaints'] as const;
+// Recover exact 8-bit channels carried through float32, without quantizing arbitrary colors.
+const channel=(v:number)=>Math.fround(Math.round(v*255)/255)===Math.fround(v)?String(Math.round(v*255)):number(v*255);
 const rgba = (c: Value, opacity = 1) => c && ['r','g','b','a'].every(k=>unit(c[k])) && unit(opacity)
-  ? `rgba(${number(c.r*255)}, ${number(c.g*255)}, ${number(c.b*255)}, ${number(c.a*opacity)})` : undefined;
+  ? `rgba(${channel(c.r)}, ${channel(c.g)}, ${channel(c.b)}, ${number(c.a*opacity)})` : undefined;
 const cssString = (s: string) => '"' + s.replace(/["\\\n\r\f\0]/g,c=>'\\'+c.charCodeAt(0).toString(16)+' ') + '"';
 function paints(values: unknown, path: string, unresolved: string[]): Value[] | null {
   if (!Array.isArray(values)) return null;
@@ -117,7 +119,10 @@ function textStyle(n: Value) {
   result.mixed=new Set((result.ranges as Value[]).map(r=>r.styleId)).size>1;
   return result;
 }
-export function networkStyle(n: Value) {
+export function networkStyle(n: Value, resolveVariable?: (data:Value)=>Value, suppliedBindings?: ReturnType<typeof nativeVariableBindings>) {
+  const nativeBindings=suppliedBindings??nativeVariableBindings(n,resolveVariable);
+  if(resolveVariable&&!suppliedBindings)n=effectiveVariableNode(n,nativeBindings);
+
   const css: Record<string,string>={}, unresolved: string[]=[];
   const fills=paints(n.fillPaints,'fills',unresolved), strokes=paints(n.strokePaints,'strokes',unresolved);
   const source: Value=pick(n,['opacity','blendMode','cornerRadius','cornerSmoothing','rectangleCornerRadiiIndependent',
@@ -153,6 +158,20 @@ export function networkStyle(n: Value) {
     if(ranges.length)for(const [key,value]of Object.entries(ranges[0].css)) if(ranges.every(r=>r.css[key]===value))css[key]=value as string;
     unresolved.push(...text.unresolved.map((s:string)=>'text.'+s));
   }
-  return {css,source,fills,strokes,effects,nativeBindings:nativeVariableBindings(n),...(text?{text}:{}),unresolved:[...new Set(unresolved)],complete:false,
-    provenance:'captured-wire; numeric colors retain float precision; variables and unsupported CSS compositions remain unresolved'};
+  const markBindings=(paints:Value[]|null,field:string,prefix='')=>paints?.forEach((paint,i)=>{
+    if(!paint.variableBindingUnresolved)return;
+    paint.variableBindingPresent=true;
+    const refs=nativeBindings.references.filter(r=>r.path.startsWith(`${prefix}${field}[${i}].`));
+    paint.variableBindingUnresolved=!refs.length||refs.some(r=>r.status!=='resolved');
+  });
+  markBindings(fills,'fillPaints');markBindings(strokes,'strokePaints');
+  if(text){
+    markBindings(text.base.fills,'fillPaints');
+    for(const range of text.ranges) {
+      const override=n.textData?.styleOverrideTable?.find((s:Value)=>s.styleID===range.styleId);
+      markBindings(range.fills,'fillPaints',override?.fillPaints?`textStyle[${range.styleId}].`:'');
+    }
+  }
+  return {css,source,fills,strokes,effects,nativeBindings,...(text?{text}:{}),unresolved:[...new Set(unresolved)],complete:false,
+    provenance:'captured-wire; numeric colors retain float precision; effective native values applied before CSS; unsupported CSS compositions remain unresolved'};
 }

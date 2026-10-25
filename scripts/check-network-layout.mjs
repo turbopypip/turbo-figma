@@ -28,7 +28,13 @@ do {
 const baselinePages=(ui.pages??[ui]).map(raw=>{const p=raw.context??raw;return {...p,nodes:p.nodes?.map(n=>({...n,layout:n.layout??parseLayout(n.properties)}))};});
 const comparison = compareLayoutPages(baselinePages, pages, {sameStateEvidence:ui.sameStateEvidence,alignInstanceIds:ui.alignInstanceIds===true});
 const report = {date:new Date().toISOString(), baselineSha256:createHash('sha256').update(uiBytes).digest('hex'),
-  source:'saved inspector baseline vs replayed wire snapshot',format,networkPages:pages.length,...comparison};
+  source:'saved inspector baseline vs replayed wire snapshot',format,networkPages:pages.length,
+  componentEvidence:{instances:pages.flatMap(p=>p.nodes).filter(n=>n.type==='INSTANCE').length,
+    expanded:pages.flatMap(p=>p.nodes).filter(n=>n.component?.status==='expanded').length,
+    derivedNodes:pages.flatMap(p=>p.nodes).filter(n=>n.id.startsWith('I')).length,
+    unresolved:Math.max(0,...pages.map(p=>p.traversal.unresolvedInstanceCount??0)),
+    maxDependencyReads:Math.max(0,...pages.map(p=>p.components?.dependencyReads??0)),
+    maxDependencyBytes:Math.max(0,...pages.map(p=>p.components?.dependencyBytes??0))},...comparison};
 const directory = new URL('../.cache/figma-network/layout-checks/', import.meta.url);
 await mkdir(directory,{recursive:true});
 const target = new URL(`${rootId.replace(':','-')}-${format}-parity.json`,directory);

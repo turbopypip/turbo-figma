@@ -27,10 +27,10 @@ export function instanceNode(node: Node, context?: InstanceContext) {
   }
   for (const ref of effective.componentPropRefs ?? []) {
     const assigned = context.properties?.[safeId(ref.defID)];
-    if (!assigned) continue;
+    if (!assigned) { effective = {...effective,instanceUnresolved:true,instanceError:'Component property definition or assignment absent'}; continue; }
     const v = assigned.varValue?.value ?? assigned.value ?? assigned.initialValue;
     if (ref.componentPropNodeField === 'VISIBLE' && typeof v?.boolValue === 'boolean') effective = {...effective,visible:v.boolValue};
-    else if (ref.componentPropNodeField === 'TEXT_DATA' && (v?.textDataValue ?? v?.textValue)) effective = {...effective,textData:v.textDataValue ?? v.textValue};
+    else if (ref.componentPropNodeField === 'TEXT_DATA' && (typeof v?.textValue === 'string' || typeof v?.textDataValue?.characters === 'string')) effective = {...effective,textData:v.textDataValue ?? v.textValue};
     else if (ref.componentPropNodeField === 'OVERRIDDEN_SYMBOL_ID' && (v?.symbolIdValue?.guid ?? v?.guidValue)) effective = {...effective,overriddenSymbolID:v.symbolIdValue?.guid ?? v.guidValue};
     else effective = {...effective,instanceUnresolved:true,instanceError:'Unsupported component property binding'};
   }
@@ -51,10 +51,12 @@ export function enterInstance(node: Node, id: string, read: (id:string)=>Node | 
   });
   for (const outer of context?.scopes ?? []) scopes.push({overrides:scopeTo(outer.overrides),derived:scopeTo(outer.derived)});
   if (Buffer.byteLength(JSON.stringify(scopes)) > 1024*1024) throw new Error('Instance override context limit exceeded');
+  const structural = scopes.some(scope=>[...scope.overrides,...scope.derived].some(n=>n.parentIndex !== undefined || (n.phase !== undefined && !['CREATED','UPDATED'].includes(n.phase))));
+  if (structural) return {error:'Structural instance overrides are not supported'} as const;
   const properties: Record<string,Node> = {};
   for (const d of master.componentPropDefs ?? []) if (d.initialValue || d.varValue) properties[safeId(d.id)] = d;
   for (const a of node.componentPropAssignments ?? []) properties[safeId(a.defID)] = a;
-  const effective: Node = {...master,...node,layoutInheritance:{componentId:symbolId}};
+  const effective: Node = {...master,...node,layoutInheritance:{componentId:symbolId},component:{definitionId:symbolId,status:'expanded',source:'captured-component',complete:false}};
   if (node.overriddenSymbolID && node.symbolData?.symbolID) {
     const original = read(safeId(node.symbolData.symbolID));
     if (original?.name === node.name && master.name !== undefined) effective.name = master.name;

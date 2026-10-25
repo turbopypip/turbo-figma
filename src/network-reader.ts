@@ -113,7 +113,7 @@ async function decode(params: Record<string, unknown>, cache: NetworkStore, sign
       if (query.format !== 'debug') {
         delete result.metrics; delete result.documentRecords; delete result.initialBatches;
         result.node = {id:result.rootId};
-        result.limitations.push('Visual style limitations and unresolved native Figma variable references are listed per node. UI-kit matches are computed from values, not native bindings.');
+        result.limitations.push('Visual style limitations and native Figma variable resolution results are listed per node. UI-kit matches are computed from values, not native bindings.');
       }
       if (variables) result.nodes = result.nodes.map((node:any)=>mapNetworkNodeVariables(node,variables));
       result.variableMatching = {source:'ui-kit-value-match',enabled:!!variables, nativeBindings:'style.nativeBindings',
@@ -128,8 +128,8 @@ async function decode(params: Record<string, unknown>, cache: NetworkStore, sign
         if (query.format !== 'debug') {
           result.nodeCount = result.nodes.length;
           result.childrenTruncated = result.traversal.nextOffset !== null || result.traversal.pendingDepthCount > 0;
-          result.traversal.complete = !result.childrenTruncated;
-          result.truncated = result.childrenTruncated || result.nodes.some((n:any)=>n.propertiesOmitted);
+          result.traversal.complete = !result.childrenTruncated && !result.traversal.unresolvedInstanceCount;
+          result.truncated = result.childrenTruncated || !!result.traversal.unresolvedInstanceCount || result.nodes.some((n:any)=>n.propertiesOmitted);
         }
       };
       finalize();

@@ -1,0 +1,40 @@
+{
+  "date": "2026-10-25",
+  "scope": "TODO 14: supported component expansion; replay of saved full UI baseline",
+  "accepted": true,
+  "baselineSha256": "07b13b7b6bb3fef063e408ed17af5d94d60266cd352d8adee11a00b2103ebcdd",
+  "formats": {
+    "context": {
+      "accepted": true,
+      "uiNodes": 103,
+      "networkNodes": 103,
+      "networkPages": 3
+    },
+    "debug": {
+      "accepted": true,
+      "uiNodes": 103,
+      "networkNodes": 103,
+      "networkPages": 3
+    }
+  },
+  "layoutChecks": 697,
+  "componentEvidence": {
+    "instances": 25,
+    "expanded": 25,
+    "derivedNodes": 59,
+    "unresolved": 0,
+    "maxDependencyReads": 168,
+    "maxDependencyBytes": 210778
+  },
+  "verification": {
+    "typecheck": "passed",
+    "tests": 189,
+    "diffCheck": "passed"
+  },
+  "limitations": [
+    "No fresh live UI traversal; original baseline has no server revision token.",
+    "Empty text and resource/error scenarios checked synthetically.",
+    "External/missing definitions, scaled instances, structural overrides and unsupported property bindings remain unsupported and block acceptance when required.",
+    "Resource counters are not RAM acceptance; Windows/full budget remain TODO 20."
+  ]
+}

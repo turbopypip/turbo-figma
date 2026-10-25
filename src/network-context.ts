@@ -12,9 +12,14 @@ export function designContextNode(node: Value): Value {
   if (typeof node.opacity === 'number' && Number.isFinite(node.opacity)) result.opacity = node.opacity;
   const text = typeof node.textData === 'string' ? node.textData : node.textData?.characters;
   if (typeof text === 'string') result.text = text;
+  if (node.component) result.component = node.component;
   if (node.instanceUnresolved) { result.instanceUnresolved = true; result.instanceError = node.instanceError; }
   if (!node.layout) return {...result,propertiesOmitted:node.propertiesOmitted ?? 'Layout unavailable'};
-  if (node.style) result.style = node.style;
+  if (node.style) result.style = {...node.style,nativeBindings:node.style.nativeBindings?{
+    complete:node.style.nativeBindings.complete,
+    unresolved:node.style.nativeBindings.unresolved,
+    references:node.style.nativeBindings.references.map((r:Value)=>({path:r.path,status:r.status,...(r.reason?{reason:r.reason}: {})}))
+  }:undefined};
   const l = node.layout, source: Value = {}, sizing: Value = {}, hints: Value[] = [];
   if (l.autoLayout.direction === 'row' || l.autoLayout.direction === 'column') source.Flow = l.autoLayout.direction === 'row' ? 'Horizontal' : 'Vertical';
   for (const axis of ['width','height']) {
