@@ -301,6 +301,7 @@ export class DiskNetworkSnapshot {
     const next = params.offset + nodes.length;
     return { adapter: 'figma-network-snapshot', live: this.applied > 0, appliedLiveBatches: this.applied, fileKey, rootId: nodeId, documentRecords: this.count,
       initialBatches: this.batches, ignoredLiveBatches: this.live, nodes,
+      selectionPath: [...ancestors].reverse().filter(item => item.node.type !== 'CANVAS' && item.node.type !== 'DOCUMENT').map(item => item.id),
       traversal: { eligibleRecords: eligible, returned: nodes.length, pendingDepth: pending, skippedHidden: skipped,
         pendingDepthCount: pendingCount, skippedHiddenCount: skippedCount, diagnosticListsTruncated: pendingCount > pending.length || skippedCount > skipped.length,
         nextOffset: next < eligible ? next : null, unresolvedInstanceCount:unresolvedCount }, incomplete: true,

@@ -41,12 +41,12 @@ test('authentication saves key; session restore retains target and has no popup 
 });
 test('outage retries with capped backoff; alarm wakes reconnect without replaying requests',async()=>{
   const f=await fixture({port:3055,secret},target);const ws=f.sockets[0];ws.open();await ws.message({type:'ready'});
-  await ws.message({type:'request',id:'1',method:'get_selection'});assert.equal(f.requests,1);
+  await ws.message({type:'request',id:'1',method:'get_selection'});assert.equal(f.requests,0);assert.match(ws.sent.at(-1).error,/Unsupported/);
   ws.close(1006);assert.equal(f.intervals.size,0);
   assert.equal([...f.timers.values()][0].delay,1000);
   for(let i=0;i<8;i++){f.tick();f.sockets.at(-1).close(1006);}
   assert.equal([...f.timers.values()][0].delay,30000);
-  await f.controller.wake();assert.equal(f.timers.size,0);assert.equal(f.requests,1);
+  await f.controller.wake();assert.equal(f.timers.size,0);assert.equal(f.requests,0);
 });
 test('disconnect retains key; forget wins queued save and prevents restoration',async()=>{
   const f=await fixture({port:3055,secret},target);const ws=f.sockets[0];ws.open();void ws.message({type:'ready'});
@@ -85,10 +85,10 @@ test('real WebSocket bridge restarts and background reconnects without replay',a
   const f=await fixture({port,secret},target,{WebSocket,timers:globalThis});
   const wait=async predicate=>{const deadline=Date.now()+5000;while(!predicate()){if(Date.now()>deadline)throw Error('timeout');await new Promise(r=>setTimeout(r,20));}};
   try {
-    await wait(()=>f.states.at(-1)==='connected');assert.deepEqual(await bridge.request('get_selection',{}),{ok:true});
+    await wait(()=>f.states.at(-1)==='connected');await assert.rejects(bridge.request('get_selection',{}),/Unsupported/);
     await bridge.close();await wait(()=>f.states.at(-1)==='connecting');
     bridge=new Bridge(secret,port);await bridge.ready;await wait(()=>f.states.at(-1)==='connected');
-    assert.equal(f.requests,1);assert.deepEqual(await bridge.request('get_selection',{}),{ok:true});
+    assert.equal(f.requests,0);await assert.rejects(bridge.request('get_selection',{}),/Unsupported/);
   } finally {await f.controller.control({action:'disconnect'});await bridge.close();}
 });
 test('popup close only stops UI refresh; information goes directly to README',async()=>{
@@ -132,10 +132,10 @@ test('one secret entry pairs different Figma tabs and files, including after bro
       assert.equal(result.error,undefined);
       await waitConnected(f.controller);
       assert.equal(f.local.pairing.secret,secret);
-      assert.deepEqual(await bridge.request('get_selection',{}),{tabId});
+      await assert.rejects(bridge.request('get_selection',{}),/Unsupported/);
       assert.equal((await f.controller.control({action:'status'})).fileKey,targets.get(tabId));
     }
-    assert.deepEqual(visited,[7,8,9,7,8]);
+    assert.deepEqual(visited,[]);
     await f.controller.tabChanged(8,{},undefined);
     // Browser restart clears session storage but retains the local pairing.
     restarted=await fixture(f.local.pairing,undefined,{WebSocket,timers:globalThis});
@@ -143,7 +143,7 @@ test('one secret entry pairs different Figma tabs and files, including after bro
     const result=await restarted.controller.control({action:'connect',tabId:10,port,secret:''});
     assert.equal(result.error,undefined);
     await waitConnected(restarted.controller);
-    assert.deepEqual(await bridge.request('get_selection',{}),{ok:true});
+    await assert.rejects(bridge.request('get_selection',{}),/Unsupported/);
   } finally {
     await f.controller.control({action:'disconnect'});
     await restarted?.controller.control({action:'disconnect'});
@@ -209,4 +209,37 @@ test('popup cache button sends one explicit clear command and keeps cache feedba
   assert.match(element('cache-status').textContent,/Удалено 2/);
   assert.match(element('cache-status').textContent,/сохранены/);
   assert.equal(element('status').textContent,'Подключено');
+});
+
+test('screenshot preparation failure before Copy as allows retry, without changing export policy', async () => {
+  const f=await fixture({port:3055,secret},target);
+  f.chrome.windows={update:async()=>{}}; f.chrome.tabs.update=async()=>{};
+  f.chrome.scripting.executeScript=async({args:[method]})=> method==='begin_export'
+    ? [{result:{error:'Copy as unavailable',nativeCopyStarted:false}}]
+    : [{result:{result:{id:'1:1'}}}];
+  const ws=f.sockets[0];ws.open();await ws.message({type:'ready'});
+  for(const id of ['first','retry']) {
+    await ws.message({type:'request',id,method:'get_screenshot',params:{nodeId:'1:1'}});
+    assert.match(ws.sent.at(-1).error,/Copy as unavailable/);
+    assert.equal(f.stored.connection.exportUncertain,false);
+  }
+});
+
+test('failed screenshot selection preserves connection and never navigates or starts native copy', async () => {
+  const f=await fixture({port:3055,secret},target);
+  const updates=[], methods=[];
+  f.chrome.windows={update:async()=>{}};
+  f.chrome.tabs.update=async(id,options)=>updates.push(options);
+  f.chrome.scripting.executeScript=async({args:[method]})=>{
+    methods.push(method);return [{result:{error:'Screenshot ancestor is not available on the current page'}}];
+  };
+  const ws=f.sockets[0];ws.open();await ws.message({type:'ready'});
+  for(const id of ['first','retry']) {
+    await ws.message({type:'request',id,method:'get_screenshot',params:{url:'https://www.figma.com/design/test/name?node-id=1-1',ancestors:['0:1']}});
+    assert.match(ws.sent.at(-1).error,/Screenshot ancestor/);
+    assert.equal(ws.readyState,1);
+    assert.equal((await f.controller.control({action:'status'})).state,'connected');
+  }
+  assert.deepEqual(methods,['select_node','select_node']);
+  assert.ok(updates.every(options=>!options.url));
 });

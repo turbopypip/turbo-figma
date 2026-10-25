@@ -106,7 +106,7 @@ for (const [name, value] of [['count mismatch', evidence(2)], ['missing join', {
 
 test('slow disk with concurrent producer rejects overflow; no second part is queued or committed', async t => {
   let release, entered = false, writes = 0;
-  const { store, peer, bridge, connect } = await fixture(t, store => ({observe: id => store.observe(id), renewObservation: controller => store.renewObservation(controller), applyLive: (...args) => store.applyLive(...args), begin: async (...args) => {
+  const { store, peer, bridge, connect } = await fixture(t, store => ({setSelection: (...args) => store.setSelection(...args), observe: id => store.observe(id), renewObservation: controller => store.renewObservation(controller), applyLive: (...args) => store.applyLive(...args), begin: async (...args) => {
     const writer = await store.begin(...args);
     return { ...writer, get state() { return writer.state; }, append: async (...args) => {
       writes++; entered = true; await new Promise(r => { release = r; }); await writer.append(...args);
@@ -127,7 +127,7 @@ test('slow disk with concurrent producer rejects overflow; no second part is que
 
 test('server rejects pipelined parts during a slow write and frees writer after disconnect', async t => {
   let release, entered = false;
-  const { store, peer, bridge } = await fixture(t, store => ({observe: id => store.observe(id), renewObservation: controller => store.renewObservation(controller), applyLive: (...args) => store.applyLive(...args), begin: async (...args) => {
+  const { store, peer, bridge } = await fixture(t, store => ({setSelection: (...args) => store.setSelection(...args), observe: id => store.observe(id), renewObservation: controller => store.renewObservation(controller), applyLive: (...args) => store.applyLive(...args), begin: async (...args) => {
     const writer = await store.begin(...args);
     return { ...writer, get state() { return writer.state; }, append: async (...args) => {
       entered = true; await new Promise(r => {release = r;}); await writer.append(...args);
@@ -143,7 +143,7 @@ test('server rejects pipelined parts during a slow write and frees writer after 
 });
 
 test('disk error is explicit and the failed generation remains unreadable', async t => {
-  const { store, peer } = await fixture(t, store => ({observe: id => store.observe(id), renewObservation: controller => store.renewObservation(controller), applyLive: (...args) => store.applyLive(...args), begin: async (...args) => {
+  const { store, peer } = await fixture(t, store => ({setSelection: (...args) => store.setSelection(...args), observe: id => store.observe(id), renewObservation: controller => store.renewObservation(controller), applyLive: (...args) => store.applyLive(...args), begin: async (...args) => {
     const writer = await store.begin(...args);
     return { ...writer, get state() {return writer.state;}, append: async () => {throw Error('ENOSPC');} };
   }}));
@@ -174,7 +174,7 @@ test('auth file binding is required for capture while legacy auth still supports
 
 test('disconnect during finish cancels publication and releases the capture slot', async t => {
   let release, entered = false;
-  const { store, peer, bridge } = await fixture(t, store => ({observe: id => store.observe(id), renewObservation: controller => store.renewObservation(controller), applyLive: (...args) => store.applyLive(...args), begin: async (...args) => {
+  const { store, peer, bridge } = await fixture(t, store => ({setSelection: (...args) => store.setSelection(...args), observe: id => store.observe(id), renewObservation: controller => store.renewObservation(controller), applyLive: (...args) => store.applyLive(...args), begin: async (...args) => {
     const writer = await store.begin(...args);
     return { ...writer, get state() {return writer.state;}, commit: async (...args) => {
       entered = true; await new Promise(r => {release = r;}); return writer.commit(...args);
@@ -284,7 +284,7 @@ test('reconnection waits for the previous writer cleanup before advertising read
   const gate = new Promise(r => { release = r; });
   const started = new Promise(r => { entered = r; });
   const { peer, connect } = await fixture(t, store => ({
-    observe: id => store.observe(id), renewObservation: owner => store.renewObservation(owner),
+    setSelection: (...args) => store.setSelection(...args), observe: id => store.observe(id), renewObservation: owner => store.renewObservation(owner),
     applyLive: (...args) => store.applyLive(...args), begin: async (...args) => {
       const writer = await store.begin(...args);
       return {...writer, get state() { return writer.state; }, abort: async (...values) => {

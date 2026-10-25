@@ -14,6 +14,7 @@ export class InitialSnapshotInspector {
   private started = false;
   private ended = false;
   private nodes = 0;
+  selection?: string[];
   get liveCursor() { return { eventSequence: this.sequence, socket: this.socket }; }
   get progress() { return { schemaReceived: !!this.codec, joinStarted: this.started, joinEnded: this.ended,
     initialComplete: this.ended && !this.pending.length }; }
@@ -70,11 +71,28 @@ export class InitialSnapshotInspector {
           throw new Error(`Unsupported user presence field: ${field}`);
         if (type === 'ClientBroadcast' && !['sessionID', 'cursorReaction', 'timer', 'presenter', 'prototypePresenter', 'music'].includes(field))
           throw new Error(`Unsupported client broadcast field: ${field}`);
-      });
+      }, direction === 'ws-sent');
     // Only the observed reconnect notifications are known to be document-neutral.
     // Unknown signals and signals carrying nodes must never silently lose changes.
     const only = (fields: string[]) => message.wireFields.every((field: string) => fields.includes(field));
-    if (message.type === 'USER_CHANGES' && nodes === 0 && only(direction === 'ws-sent' ? ['type', 'userChanges', 'sentTimestamp', 'nodeChangeOrder'] : ['type', 'userChanges'])) return true;
+    if (message.type === 'USER_CHANGES' && nodes === 0 && only(direction === 'ws-sent' ? ['type', 'userChanges', 'sentTimestamp', 'nodeChangeOrder'] : ['type', 'userChanges'])) {
+      if (direction === 'ws-sent') {
+        const changes = message.userChanges ?? [];
+        const selected = changes.filter((change: any) => change.selection !== undefined);
+        if (selected.length) {
+          if (changes.length !== 1 || !Array.isArray(selected[0].selection) || selected[0].selection.length > 100) {
+            this.selection = undefined;
+          } else {
+            const ids = selected[0].selection.map((guid: any) => {
+              if (!Number.isInteger(guid.sessionID) || !Number.isInteger(guid.localID)) throw new Error('Invalid selection GUID');
+              return `${guid.sessionID}:${guid.localID}`;
+            });
+            this.selection = [...new Set<string>(ids)];
+          }
+        }
+      }
+      return true;
+    }
     if (message.type === 'CLIENT_BROADCAST' && nodes === 0 && only(direction === 'ws-sent' ? ['type', 'broadcasts', 'sentTimestamp', 'nodeChangeOrder'] : ['type', 'broadcasts'])) return true;
     if (direction === 'ws-sent' && message.type === 'CLIENT_RENDERED' && nodes === 0 && only(['type', 'sentTimestamp', 'clientRenderedMetadata', 'nodeChangeOrder'])) return true;
     if (direction === 'ws-received' && message.type === 'SIGNAL' && only(['type', 'signalName', 'signalPayload', 'nodeChanges']) && ['reconnect-key', 'reconnect-sequence-number'].includes(message.signalName) && nodes === 0) return true;

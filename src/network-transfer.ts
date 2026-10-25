@@ -38,7 +38,7 @@ export class NetworkTransfer {
   private controller = new AbortController();
   private work?: Promise<void>;
   private timer?: ReturnType<typeof setTimeout>;
-  constructor(private store: Pick<NetworkStore, 'begin' | 'observe' | 'renewObservation' | 'applyLive'>, private fileKey: string | undefined,
+  constructor(private store: Pick<NetworkStore, 'begin' | 'observe' | 'renewObservation' | 'applyLive' | 'setSelection'>, private fileKey: string | undefined,
     private reply: (message: unknown) => void, private disconnect: () => void, private timeout = 30000) {}
   get busy() { return (!!this.snapshot && !this.observation) || !!this.work; }
   receive(value: unknown, blocked: boolean) {
@@ -79,7 +79,10 @@ export class NetworkTransfer {
           if (!bytes.length || bytes.length > LIVE_LIMITS.recordBytes || bytes.toString('base64') !== msg.data) throw new Error('STALE: invalid live record size or encoding');
           const record = liveRecord.parse(JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)));
           if (record.eventSequence !== this.cursor.eventSequence + this.revision || JSON.stringify([record.session, record.requestId]) !== this.cursor.socket) throw new Error('STALE: live event gap or foreign stream');
-          if (this.inspector!.isServiceMessage(record.payload, record.kind)) this.store.renewObservation(this.observation);
+          if (this.inspector!.isServiceMessage(record.payload, record.kind)) {
+            this.store.renewObservation(this.observation);
+            this.store.setSelection(this.observation, this.inspector!.selection);
+          }
           else {
             if (record.kind === 'ws-sent') throw new Error('Unsupported outgoing document message');
             // Service traffic is validated and discarded, not retained in the

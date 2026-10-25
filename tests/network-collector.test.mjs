@@ -171,7 +171,7 @@ test('connection routes capture into disk store and disconnect removes debugger 
   assert.equal((await connection.control({action:'status'})).capture.complete,true);
   assert.equal(detaches,0);
   assert.equal(store.freshness(manifest).aborted,false);
-  assert.deepEqual(await bridge.request('get_selection',{}),{id:'1:1'});
+  await assert.rejects(bridge.request('get_selection',{}),/Unsupported/);
   await connection.tabChanged(7,{url:'https://www.figma.com/design/other/File'},{id:7,url:'https://www.figma.com/design/other/File'});
   assert.equal(detaches,1);assert.equal((await connection.control({action:'status'})).capture.state,'stale');
 });

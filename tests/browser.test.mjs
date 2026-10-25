@@ -48,28 +48,20 @@ function browserFixture({ url = 'https://www.figma.com/design/test/File', select
   return { calls, run: (method, params = {}) => action(method, { autoTraverse: false, ...params }, 'test') };
 }
 
-test('browser context is explicitly incomplete and obeys the visible node budget', async () => {
+test('legacy UI context is rejected without clipboard access', async () => {
   const { run, calls } = browserFixture();
-  const selection = await run('get_selection');
-  assert.equal(selection.result.nodes[0].id, '1:1');
-  const { result } = await run('get_design_context', { depth: 2, maxNodes: 2 });
-  assert.equal(result.truncated, true);
-  assert.equal(result.nodeCount, 2);
-  assert.equal(result.visibleDescendants[0].id, '2:1');
-  assert.match(result.properties[0].text, /100px/);
-  assert.ok(result.unavailable.includes('complete hierarchy'));
+  assert.match((await run('get_design_context')).error, /removed/);
   assert.deepEqual(calls, { read: 0, write: 0, click: 0 });
-  assert.equal((await run('get_design_context', { depth: 0, maxNodes: 10 })).result.nodeCount, 1);
 });
 
 test('browser rejects another file/origin, missing nodes, and changed export selection before clipboard access', async () => {
   for (const url of ['https://www.figma.com/design/other/File', 'https://example.com/design/test/File', 'https://www.figma.com/proto/test/File']) {
     const { run, calls } = browserFixture({ url });
-    assert.match((await run('get_selection')).error, /file changed/);
+    assert.match((await run('select_node')).error, /file changed/);
     assert.equal(calls.read, 0);
   }
   const { run, calls } = browserFixture();
-  assert.match((await run('get_design_context', { nodeId: 'missing' })).error, /not found/);
+  assert.match((await run('select_node', { nodeId: 'missing' })).error, /not found/);
   assert.match((await run('read_export', { nodeId: '2:1', format: 'PNG' })).error, /Selection changed/);
   assert.equal(calls.read, 0);
   assert.equal(calls.click, 0);
@@ -95,13 +87,4 @@ test('SVG preparation opens a collapsed Export panel through pointer/mouse activ
   const result = await run('prepare_svg');
   assert.equal(result.result.id, '1:1');
   assert.equal(calls.click, 1);
-});
-
-test('current tooltip attribute replaces Figma naming without cached/hardcoded values', async () => {
-  for (const actual of ['32px', '40px', '']) {
-    const { run } = browserFixture({ tooltipValue: actual });
-    const { result } = await run('get_design_context');
-    assert.equal(result.properties[0].fields[0].value, actual || 'unavailable');
-    assert.equal(JSON.stringify(result).includes('Spacing/sp-xl'), false);
-  }
 });

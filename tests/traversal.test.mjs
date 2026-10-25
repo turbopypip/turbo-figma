@@ -5,7 +5,7 @@ import { figmaAction } from '../extension/dom.js';
 
 // A genuinely virtual tree: only three rows exist at a time. Expanding changes
 // indices; scrolling unmounts parents; selecting updates inspector properties.
-function fixture({ interrupt = false, inspectorDelay = 0, colors = {}, initialExpanded = [] } = {}) {
+function fixture({ interrupt = false, inspectorDelay = 0, colors = {}, initialExpanded = [], layersCollapsed = false } = {}) {
   const tree = [
     { id: 'root', level: 0, children: true },
     { id: 'group', level: 1, children: true, parent: 'root' },
@@ -19,6 +19,8 @@ function fixture({ interrupt = false, inspectorDelay = 0, colors = {}, initialEx
   let selected = 'root', top = 0, now = 0, interrupted = false;
   const visible = () => tree.filter(item => !item.parent || (expanded.has(item.parent) && (item.parent !== 'group' || expanded.has('root'))));
   const body = {};
+  let layersOpen = !layersCollapsed, toggleClicks = 0;
+  const layersToggle = { getClientRects: () => [1], getAttribute: key => key === 'aria-label' ? 'Layers' : key === 'aria-expanded' ? String(layersOpen) : null, click() { layersOpen = !layersOpen; toggleClicks++; } };
   const scroll = { parentElement: body, clientHeight: 60, get scrollHeight() { return visible().length * 20; },
     get scrollTop() { return top; }, set scrollTop(value) { top = Math.max(0, Math.min(value, this.scrollHeight - 60)); scrolls.push(top); } };
   const panel = { parentElement: scroll, clientHeight: 0 };
@@ -37,11 +39,11 @@ function fixture({ interrupt = false, inspectorDelay = 0, colors = {}, initialEx
   });
   const label = value => ({ getClientRects: () => [1], getAttribute: key => key === 'aria-label' ? value : key === 'aria-selected' ? 'true' : null });
   const document = { body,
-    querySelector: selector => selector.includes('objects-panel') ? panel : { getAttribute: () => 'Figma Design, 1 item selected' },
+    querySelector: selector => selector.includes('objects-panel') ? (layersOpen ? panel : null) : { getAttribute: () => 'Figma Design, 1 item selected' },
     querySelectorAll: selector => {
-      if (selector === '[role="row"]') return visible().slice(Math.floor(top / 20), Math.floor(top / 20) + 3).map(row);
+      if (selector === '[role="row"]') return (layersOpen ? visible() : []).slice(Math.floor(top / 20), Math.floor(top / 20) + 3).map(row);
       if (selector === '[role="tab"]') return [label('Properties')];
-      if (selector === 'button,[role="button"]') return [label(selected)];
+      if (selector === 'button,[role="button"]') return [layersToggle, label(selected)];
       if (selector === '[data-testid$="inspection-panel"]') return [{ getClientRects: () => [1], getAttribute: () => 'properties-inspection-panel', innerText: `Width of ${inspector}`, querySelectorAll: selector => selector === 'button[aria-label]' ? [label(`Copy Width: ${inspector.length}px`)] : [] }];
       throw new Error(`Unexpected query: ${selector}`);
     },
@@ -51,60 +53,8 @@ function fixture({ interrupt = false, inspectorDelay = 0, colors = {}, initialEx
     Date: { now: () => now }, setTimeout: (fn, ms) => { now += ms; if (now >= inspectorAt) inspector = selected; if (interrupt && selected === 'group' && !interrupted) { selected = 'outside'; interrupted = true; } fn(); },
   });
   const run = vm.runInContext(`(${figmaAction.toString()})`, context);
-  return { run: params => run('get_design_context', params, 'file'), select: params => run('select_node', params, 'file'), expanded, selections, scrolls, get selected() { return selected; } };
+  return { run: params => run('get_design_context', params, 'file'), select: params => run('select_node', params, 'file'), expanded, selections, scrolls, get toggleClicks() { return toggleClicks; }, get selected() { return selected; } };
 }
-
-test('walk expands nested groups, scrolls virtual rows, reads child properties and restores root without inspecting siblings', async () => {
-  const f = fixture(); const { result, error } = await f.run({ depth: 4, maxNodes: 50 });
-  assert.equal(error, undefined);
-  assert.deepEqual(Array.from(result.nodes, n => n.id), ['root', 'group', 'a', 'b', 'c']);
-  assert.equal(result.nodes[2].parentId, 'group');
-  assert.equal(result.nodes[4].parentId, 'root');
-  assert.equal(result.nodes[3].properties[0].text, 'Width of b');
-  assert.equal(result.traversal.complete, true);
-  assert.equal(result.traversal.restoredSelection, true);
-  assert.equal(f.selected, 'root');
-  assert.ok(f.scrolls.some(top => top > 0));
-  assert.ok(!f.expanded.has('outside'));
-  assert.ok(!f.selections.includes('outside'));
-  // Revisit an unmounted discovered child, without manual scrolling.
-  const second = await f.run({ nodeId: 'c', depth: 0, maxNodes: 5 });
-  assert.equal(second.result.nodes[0].id, 'c');
-});
-
-test('node and depth limits expose continuation IDs rather than claiming completeness', async () => {
-  const limited = await fixture().run({ depth: 4, maxNodes: 2 });
-  assert.equal(limited.result.nodeCount, 2);
-  assert.equal(limited.result.childrenTruncated, true);
-  assert.equal(limited.result.traversal.pending[0].nodeId, 'a');
-  const depth = await fixture().run({ depth: 1, maxNodes: 20 });
-  assert.deepEqual(Array.from(depth.result.nodes, n => n.id), ['root', 'group', 'c']);
-  assert.equal(depth.result.traversal.pending[0].nodeId, 'group');
-});
-
-test('user selection interrupts traversal and is not overwritten by root restoration', async () => {
-  const f = fixture({ interrupt: true }); const { result } = await f.run({ depth: 4, maxNodes: 50 });
-  assert.equal(result.traversal.complete, false);
-  assert.equal(result.traversal.restoredSelection, false);
-  assert.ok(result.traversal.reasons.some(reason => /Selection changed/.test(reason)));
-  assert.equal(f.selected, 'outside');
-});
-
-test('continuation pages inspect remaining siblings with preserved parent IDs and no duplicate descendants', async () => {
-  const f = fixture(), ids = [];
-  let params = { depth: 4, maxNodes: 2 }, result;
-  for (let i = 0; i < 6; i++) {
-    ({ result } = await f.run(params));
-    ids.push(...result.nodes.slice(1).map(n => n.id));
-    if (!result.traversal.nextRequest) break;
-    params = result.traversal.nextRequest;
-  }
-  assert.deepEqual(ids, ['group', 'a', 'b', 'c']);
-  assert.equal(result.traversal.complete, true);
-  assert.equal(result.nodes[1].parentId, 'root');
-  assert.match((await f.run({ depth: 4, afterNodeId: 'missing' })).error, /Continuation layer/);
-});
-
 
 test('linked mounted node is selected directly without requiring URL navigation', async () => {
   const f = fixture();
@@ -115,61 +65,23 @@ test('linked mounted node is selected directly without requiring URL navigation'
 });
 
 
-test('adaptive inspection waits for delayed properties instead of attaching previous layer data', async () => {
-  const f = fixture({ inspectorDelay: 96 });
-  const { result } = await f.run({ depth: 4, maxNodes: 50 });
-  assert.equal(result.nodes.length, 5);
-  for (const node of result.nodes) assert.equal(node.properties[0].text, `Width of ${node.id}`);
-  assert.equal(result.traversal.complete, true);
-  assert.ok(result.traversal.elapsedMs > 0);
+
+test('screenshot expands only the network ancestor path and selects the exact nested node', async () => {
+  const f = fixture();
+  const {result,error} = await f.select({nodeId:'b',ancestors:['root','group']});
+  assert.equal(error,undefined);
+  assert.equal(result.id,'b');
+  assert.equal(f.selected,'b');
+  assert.deepEqual([...f.expanded],['root','group']);
+  assert.deepEqual(f.selections,['b']);
 });
 
-
-test('hidden ordinary layers and instances are skipped without selection or expansion', async () => {
-  for (const color of ['var(--color-text-disabled)', 'var(--color-text-component-tertiary)']) {
-    for (const initialExpanded of [[], ['root', 'group']]) {
-      const f = fixture({ colors: { group: color }, initialExpanded });
-      const { result, error } = await f.run({ depth: 4, maxNodes: 20 });
-      assert.equal(error, undefined);
-      assert.deepEqual(Array.from(result.nodes, n => n.id), ['root', 'c']);
-      assert.equal(result.nodes[1].parentId, 'root');
-      assert.equal(result.traversal.complete, true);
-      assert.equal(result.traversal.skipped[0].nodeId, 'group');
-      assert.ok(!f.selections.some(id => ['group', 'a', 'b'].includes(id)));
-      if (!initialExpanded.length) assert.ok(!f.expanded.has('group'));
-    }
+test('screenshot opens collapsed Layers before expanding only target ancestors; retry keeps panel open', async () => {
+  const f = fixture({layersCollapsed:true});
+  for (let i=0;i<2;i++) {
+    const r=await f.select({nodeId:'b',ancestors:['root','group']});
+    assert.equal(r.error,undefined);assert.equal(r.result.id,'b');
   }
-});
-
-test('unknown styles remain readable and a hidden leaf does not hide its siblings', async () => {
-  const f = fixture({ colors: { group: 'var(--new-unknown-style)', a: 'var(--color-text-disabled)' } });
-  const { result } = await f.run({ depth: 4, maxNodes: 20 });
-  assert.deepEqual(Array.from(result.nodes, n => n.id), ['root', 'group', 'b', 'c']);
-  assert.equal(result.nodes[2].parentId, 'group');
-});
-
-test('hidden root returns an explicit empty result without reading its inspector or expanding', async () => {
-  const f = fixture({ colors: { root: 'var(--color-text-disabled)' } });
-  const { result, error } = await f.run({ depth: 4, maxNodes: 20 });
-  assert.equal(error, undefined);
-  assert.equal(result.nodeCount, 0);
-  assert.equal(result.properties.length, 0);
-  assert.equal(result.traversal.skipped[0].nodeId, 'root');
-  assert.equal(f.expanded.size, 0);
-  assert.equal(f.selections.length, 0);
-});
-
-test('continuation proceeds past hidden branches without spending node budget on them', async () => {
-  const f = fixture({ colors: { group: 'var(--color-text-disabled)' } });
-  const first = await f.run({ depth: 4, maxNodes: 1 });
-  assert.equal(first.result.traversal.nextRequest.afterNodeId, 'root');
-  const second = await f.run(first.result.traversal.nextRequest);
-  assert.deepEqual(Array.from(second.result.nodes, n => n.id), ['root', 'c']);
-  assert.equal(second.result.traversal.complete, true);
-});
-
-test('lightweight snapshot excludes already expanded hidden descendants', async () => {
-  const f = fixture({ colors: { group: 'var(--color-text-disabled)' }, initialExpanded: ['root','group'] });
-  const { result } = await f.run({ autoTraverse: false, depth: 4, maxNodes: 20 });
-  assert.equal(result.visibleDescendants.length, 0);
+  assert.equal(f.toggleClicks,1);
+  assert.deepEqual([...f.expanded],['root','group']);
 });

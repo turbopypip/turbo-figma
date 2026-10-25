@@ -16,7 +16,7 @@ const emit = value => { if (process.connected) process.send(value); };
 const metrics = stage => ({ stage, memory: process.memoryUsage(), cpu: process.cpuUsage(),
   processPeakRssBytes: process.resourceUsage().maxRSS * 1024 });
 let completedCaptures = 0, completedSnapshot;
-const captureStore = { observe: id => cache.observe(id), renewObservation: owner => cache.renewObservation(owner), applyLive: (...args) => cache.applyLive(...args), begin: async (...args) => {
+const captureStore = { observe: id => cache.observe(id), setSelection: (...args) => cache.setSelection(...args), renewObservation: owner => cache.renewObservation(owner), applyLive: (...args) => cache.applyLive(...args), begin: async (...args) => {
   emit({ type: 'capture-boundary', stage: 'capture-begin', atMs: performance.now() });
   const writer = await cache.begin(...args);
   return { ...writer, get state() { return writer.state; }, commit: async (...values) => {
@@ -30,7 +30,7 @@ const bridge = new Bridge(config.secret, config.port ?? 0, 30000, action => acti
 await bridge.ready;
 let currentPhase = 'startup';
 const handle = serveStdio(() => createServer(bridge, assets, undefined, cache, measurement =>
-  emit({ type: 'worker-measurement', phase: currentPhase, measurement })), { onerror: () => {} });
+  emit({ type: 'worker-measurement', phase: currentPhase, measurement }), true), { onerror: () => {} });
 process.on('message', async msg => {
   if (msg.type === 'metrics') { currentPhase = msg.stage.replace(/-(before|after)$/, ''); emit({ id: msg.id, result: metrics(msg.stage) }); }
   if (msg.type === 'export-probe') {

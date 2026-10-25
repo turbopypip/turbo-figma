@@ -1,7 +1,9 @@
 // Self-contained: Chrome serializes this function into an isolated content-script world.
 // No private Figma runtime, cookies, REST endpoints, or document writes.
 export async function figmaAction(method, params, fileKey) {
+  let nativeCopyStarted = false;
   try {
+    if (['get_design_context', 'get_selection'].includes(method)) throw new Error('UI design context was removed; use the network snapshot.');
     const url = new URL(location.href);
     if (url.origin !== 'https://www.figma.com' || !/^\/(design|file)\//.test(url.pathname) || url.pathname.split('/')[2] !== fileKey)
       throw new Error('The paired Figma file changed. Connect the intended file again.');
@@ -53,32 +55,8 @@ export async function figmaAction(method, params, fileKey) {
       throw new Error(message);
     };
     const button = text => [...document.querySelectorAll('button,[role="button"]')].find(el => visible(el) && label(el) === text);
-    const readFields = panel => [...(panel.querySelectorAll?.('button[aria-label]') || [])]
-      .filter(el => (el.getAttribute('aria-label') || '').startsWith('Copy ') && el.getAttribute('aria-label').includes(':'))
-      .slice(0, 100).map(el => {
-        const label = el.getAttribute('aria-label'), colon = label.indexOf(':');
-        const pill = el.querySelector?.('[data-testid="inspectionPropertyValue"] [data-testid="variable-pill-root"]');
-        const values = pill ? [...pill.querySelectorAll('[data-tooltip]')].map(item => item.getAttribute('data-tooltip').trim()).filter(Boolean) : [];
-        const unique = [...new Set(values)];
-        return { name: label.slice(5, colon).trim(),
-          value: pill ? (unique.length === 1 ? unique[0].slice(0, 1000) : 'unavailable') : label.slice(colon + 1).trim().slice(0, 1000),
-          ...(pill ? { valueSource: unique.length === 1 ? 'tooltip-attribute' : 'unavailable' } : {}) };
-      });
-    // Replace variable labels in the text snapshot too; never expose them as CSS candidates.
-    const panelText = panel => {
-      let text = panel.innerText;
-      for (const pill of panel.querySelectorAll?.('[data-testid="variable-pill-root"]') || []) {
-        const values = [...pill.querySelectorAll('[data-tooltip]')].map(el => el.getAttribute('data-tooltip').trim()).filter(Boolean);
-        const unique = [...new Set(values)];
-        if (pill.innerText) text = text.replaceAll(pill.innerText, unique.length === 1 ? unique[0] : 'unavailable');
-      }
-      return text;
-    };
-    const selection = () => ({ adapter: 'chrome-dom', fileKey, nodes: selected().map(describe),
-      incomplete: true, limitation: 'Only selected rows currently mounted in the Layers panel are visible to this adapter.' });
-    if (method === 'get_selection') return { result: selection() };
     const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
-    const started = Date.now(), deadline = started + (method === 'select_node' ? 2000 : 18_000);
+    const started = Date.now(), deadline = started + (method === 'select_node' ? (params.ancestors ? 8000 : 2000) : 18_000);
     const checkFile = () => {
       const current = new URL(location.href);
       if (current.origin !== url.origin || current.pathname.split('/')[2] !== fileKey) throw new Error('Paired file changed during traversal.');
@@ -122,11 +100,37 @@ export async function figmaAction(method, params, fileKey) {
       return mounted(id) || null;
     };
 
+    // Screenshot-only path supplied by the network snapshot. Expand just its ancestors.
+    if (method === 'select_node' && Array.isArray(params.ancestors)) {
+      const layersTab = [...document.querySelectorAll('[role="tab"]')].find(el => label(el) === 'Layers');
+      if (layersTab && layersTab.getAttribute('aria-selected') !== 'true') {
+        layersTab.click(); await waitFor(() => layersTab.getAttribute('aria-selected') === 'true');
+      }
+      const layersToggle = button('Layers');
+      if (layersToggle?.getAttribute('aria-expanded') === 'false') {
+        layersToggle.click();
+        await waitFor(() => button('Layers')?.getAttribute('aria-expanded') === 'true' &&
+          document.querySelector('[data-testid="objects-panel"]'), 'Layers panel did not expand.');
+      }
+      if (params.ancestors.length > 64) throw new Error('Screenshot ancestor path exceeds limit');
+      for (const id of params.ancestors) {
+        checkFile();
+        const row = await findRow(id);
+        if (!row) throw new Error('Screenshot ancestor is not available on the current page');
+        if (row.getAttribute('aria-expanded') === 'false') {
+          const caret = row.querySelector('[data-testid="layers-panel-expand-caret"]');
+          if (!caret) throw new Error('Screenshot ancestor cannot be expanded');
+          caret.click();
+          await waitFor(() => mounted(id)?.getAttribute('aria-expanded') === 'true');
+        }
+      }
+    }
+
     if (['read_export', 'assert_selection', 'download_svg'].includes(method) && (!params.nodeId || describe(one()).id !== params.nodeId))
       throw new Error('Selection changed during export. Retry.');
     if (params.nodeId && !['read_export', 'assert_selection', 'download_svg'].includes(method)) {
       const row = params.mountedOnly ? mounted(params.nodeId) : await findRow(params.nodeId);
-      if (!row) throw new Error('Node not found among expanded Layers. First request get_design_context on its parent with autoTraverse=true.');
+      if (!row) throw new Error('Node not found among expanded Layers. Open its page and retry with a fresh network capture.');
       if (selected().length !== 1 || describe(one()).id !== params.nodeId) {
         activate(row);
         await waitFor(() => selected().length === 1 && describe(one()).id === params.nodeId);
@@ -159,197 +163,6 @@ export async function figmaAction(method, params, fileKey) {
       if (!command) throw new Error('SVG export button is unavailable.');
       activate(command); return { result: node };
     }
-    if (method === 'get_design_context') {
-      // UI visibility marker, not DOM visibility: hidden canvas layers still have rows.
-      if (node.hidden) return { result: {
-        adapter: 'chrome-dom', fileKey, node, properties: [], nodes: [], nodeCount: 0,
-        visibleDescendants: [], truncated: true, childrenTruncated: false,
-        traversal: { complete: true, pending: [], reasons: [], nextRequest: null,
-          skipped: [{ nodeId: node.id, reason: 'hidden-layer', subtree: true }] },
-        guidance: 'Selected layer is hidden according to the Layers UI. Its properties and subtree were skipped.'
-      } };
-
-      const propertiesTab = [...document.querySelectorAll('[role="tab"]')].find(el => label(el) === 'Properties');
-      if (!propertiesTab) throw new Error('Properties tab is unavailable in this file.');
-      if (propertiesTab.getAttribute('aria-selected') !== 'true') {
-        propertiesTab.click(); await waitFor(() => propertiesTab.getAttribute('aria-selected') === 'true');
-      }
-      await waitFor(() => button(node.name));
-      if (params.autoTraverse !== false) {
-        const depth = Math.min(12, Math.max(0, params.depth ?? 4));
-        const maxNodes = Math.min(500, Math.max(1, params.maxNodes ?? 200));
-        const nodes = [], reasons = [], pending = [], stack = [], skipped = [];
-        let hiddenLevel = null;
-        const visited = new Set();
-        let resuming = Boolean(params.afterNodeId), lastReadId = params.afterNodeId || null;
-        let expectedId = node.id, complete = false, textLength = 0, restoreSelection = true;
-        const assertExpected = () => {
-          checkFile();
-          const current = selected();
-          const count = document.querySelector('[role="application"][aria-label^="Figma Design"]')?.getAttribute('aria-label');
-          if (count !== 'Figma Design, 1 item selected' || (mounted(expectedId) && current.length === 0) || (current.length && (current.length !== 1 || describe(current[0]).id !== expectedId))) {
-            restoreSelection = false; throw new Error('Selection changed by user; traversal stopped.');
-          }
-        };
-        const inspectorSignature = () => [...document.querySelectorAll('[data-testid$="inspection-panel"]')]
-          .filter(el => visible(el) && !el.getAttribute('data-testid').startsWith('export-'))
-          .map(el => el.getAttribute('data-testid') + ':' + el.innerText).join('\n');
-        const selectRow = async row => {
-          assertExpected();
-          const info = describe(row);
-          const scroll = scroller(), previousTop = scroll?.scrollTop;
-          row.scrollIntoView?.({ block: 'nearest' });
-          if (scroll && scroll.scrollTop !== previousTop) await pause(32);
-          row = mounted(info.id);
-          if (!row) throw new Error('Layer disappeared while scrolling.');
-          remember(row);
-          if (expectedId !== info.id) {
-            const before = inspectorSignature(), selectionStarted = Date.now();
-            activate(row); expectedId = info.id;
-            await waitFor(() => selected().length === 1 && describe(selected()[0]).id === info.id);
-            // Changed properties must settle across several frames. If two layers
-            // have identical inspector text, retain the previous conservative delay.
-            let signature = null, stableSince = Date.now();
-            await waitFor(() => {
-              assertExpected();
-              if (!button(info.name)) { stableSince = Date.now(); return false; }
-              const current = inspectorSignature();
-              if (!current) return false;
-              if (current !== signature) { signature = current; stableSince = Date.now(); }
-              return Date.now() - stableSince >= 48 && (current !== before || Date.now() - selectionStarted >= 150);
-            }, 'Inspector did not settle for the selected layer.');
-          }
-          await waitFor(() => button(info.name));
-          assertExpected();
-        };
-        const nextRow = async id => {
-          for (let step = 0; step < 150 && Date.now() < deadline; step++) {
-            assertExpected();
-            let all = rows(), index = all.findIndex(row => rowId(row) === id);
-            if (index < 0) throw new Error('Traversal lost its position in virtualized Layers.');
-            if (index + 1 < all.length) return all[index + 1];
-            const scroll = scroller();
-            if (!scroll || scroll.scrollTop + scroll.clientHeight >= scroll.scrollHeight - 1) return null;
-            // Keep the last visited row in the overlapping viewport to avoid gaps.
-            all[index].scrollIntoView?.({ block: 'start' }); await pause(32);
-            all = rows(); index = all.findIndex(row => rowId(row) === id);
-            if (index >= 0 && index + 1 < all.length) return all[index + 1];
-            const before = scroll.scrollTop;
-            scroll.scrollTop += Math.max(16, scroll.clientHeight / 2); await pause(32);
-            if (scroll.scrollTop === before) return null;
-          }
-          throw new Error('Traversal time limit reached.');
-        };
-        let current = mounted(node.id);
-        try {
-          while (current) {
-            assertExpected();
-            const info = describe(current);
-            if (info.id !== node.id && info.level <= node.level) { complete = true; break; }
-            if (visited.has(info.id)) throw new Error('Layers traversal repeated a row; stopped to avoid skipping nodes.');
-            visited.add(info.id);
-            if (hiddenLevel !== null && info.level <= hiddenLevel) hiddenLevel = null;
-            if (info.hidden || hiddenLevel !== null) {
-              if (hiddenLevel === null) {
-                hiddenLevel = info.level;
-                skipped.push({ nodeId: info.id, reason: 'hidden-layer', subtree: true });
-              }
-              if (info.id === params.afterNodeId) resuming = false;
-              current = await nextRow(info.id);
-              if (!current) complete = true;
-              continue;
-            }
-            const relativeDepth = info.level - node.level;
-            if (relativeDepth <= depth) {
-              while (stack.length && stack.at(-1).level >= info.level) stack.pop();
-              const shouldRead = !resuming || info.id === node.id;
-              if (shouldRead && (nodes.length >= maxNodes || Date.now() >= deadline || textLength >= 150_000)) {
-                reasons.push(nodes.length >= maxNodes ? 'maxNodes limit' : textLength >= 150_000 ? 'context text limit' : 'time limit');
-                pending.push({ nodeId: info.id, reason: reasons.at(-1) }); break;
-              }
-              if (shouldRead) {
-              await selectRow(current);
-              const panels = [...document.querySelectorAll('[data-testid$="inspection-panel"]')].filter(visible)
-                .filter(el => !el.getAttribute('data-testid').startsWith('export-'));
-              if (!panels.length) throw new Error('Inspector DOM is unsupported.');
-              const properties = [];
-              for (const panel of panels) {
-                const raw = panelText(panel), available = Math.max(0, 150_000 - textLength);
-                const text = raw.slice(0, Math.min(12_000, available)); textLength += text.length;
-                if (text.length < raw.length) reasons.push(`Properties text truncated: ${info.id}`);
-                properties.push({ section: panel.getAttribute('data-testid'), text, fields: readFields(panel) });
-              }
-              nodes.push({ ...info, parentId: stack.at(-1)?.id || null, properties });
-              if (!resuming) lastReadId = info.id;
-              }
-              stack.push(info);
-              if (info.id === params.afterNodeId) resuming = false;
-              if (info.hasChildren && relativeDepth < depth && !info.expanded) {
-                const caret = mounted(info.id)?.querySelector('[data-testid="layers-panel-expand-caret"]');
-                if (!caret) throw new Error(`Cannot expand layer ${info.id}`);
-                caret.click();
-                await waitFor(() => mounted(info.id)?.getAttribute('aria-expanded') === 'true');
-                // Allow child rows to mount after the expansion attribute changes.
-                await pause(32);
-              } else if (info.hasChildren && relativeDepth >= depth) {
-                pending.push({ nodeId: info.id, reason: 'depth limit' });
-              }
-            }
-            // A collapsed leaf/root has no descendant traversal to perform.
-            if (info.id === node.id && (!info.hasChildren || depth === 0)) { complete = true; break; }
-            current = await nextRow(info.id);
-            if (!current) complete = true;
-          }
-        } catch (error) {
-          reasons.push(error.message || 'Traversal stopped');
-          if (current) pending.push({ nodeId: describe(current).id, reason: 'traversal interrupted' });
-        }
-        let restored = false;
-        if (restoreSelection) {
-          try {
-            assertExpected();
-            const root = await findRow(node.id, Date.now() + 2000);
-            if (root) { await selectRow(root); restored = true; }
-          } catch (error) { reasons.push(`Could not restore root selection: ${error.message}`); }
-        }
-        if (resuming && complete) throw new Error('Continuation layer was not found in this subtree. Restart without afterNodeId.');
-        if (!nodes.length) throw new Error(reasons.join('; ') || 'No layer properties read.');
-        const childrenTruncated = !complete || pending.length > 0;
-        return { result: { adapter: 'chrome-dom', fileKey, node: nodes[0], properties: nodes[0].properties,
-          nodes, visibleDescendants: nodes.slice(1).map(({ properties, ...info }) => info), nodeCount: nodes.length,
-          truncated: true, childrenTruncated, traversal: { elapsedMs: Date.now() - started, complete: !childrenTruncated, restoredSelection: restored, pending, reasons, skipped,
-            nextRequest: !complete && !resuming && lastReadId && restoreSelection ? { nodeId: node.id, autoTraverse: true, depth, maxNodes: Math.max(2, maxNodes), afterNodeId: lastReadId } : null },
-          truncations: [...reasons, ...pending.map(item => `${item.reason}: ${item.nodeId}`)],
-          unavailable: ['properties not exposed by the inspector', 'absolute geometry', 'text style ranges not shown in inspector', 'variable definitions'],
-          guidance: 'nodes contains inspected properties and parentId for each visited layer. If traversal.nextRequest is present, call get_design_context with those exact arguments to continue without rereading previous descendants. For depth-limited pending branches, request their nodeId separately. Discovered IDs are located by scrolling automatically. Do not infer unavailable properties. The design context remains incomplete even when traversal.complete is true.' } };
-      }
-
-      if (params.depth > 0 && node.hasChildren && !node.expanded) {
-        const caret = one().querySelector('[data-testid="layers-panel-expand-caret"]');
-        if (caret) { caret.click(); await waitFor(() => one().getAttribute('aria-expanded') === 'true'); }
-      }
-      const all = rows().map(describe), index = all.findIndex(row => row.id === node.id);
-      const descendants = [];
-      let hiddenLevel = null;
-      for (let i = index + 1; i < all.length && all[i].level > node.level; i++) {
-        if (hiddenLevel !== null && all[i].level <= hiddenLevel) hiddenLevel = null;
-        if (all[i].hidden || hiddenLevel !== null) {
-          if (hiddenLevel === null) hiddenLevel = all[i].level;
-          continue;
-        }
-        if (all[i].level - node.level <= params.depth && descendants.length < params.maxNodes - 1) descendants.push(all[i]);
-      }
-      const panels = [...document.querySelectorAll('[data-testid$="inspection-panel"]')].filter(visible)
-        .filter(el => !el.getAttribute('data-testid').startsWith('export-'));
-      if (!panels.length) throw new Error('Inspector DOM is unsupported. No context returned; update the browser adapter.');
-      const properties = panels.map(el => ({ section: el.getAttribute('data-testid'), text: panelText(el).slice(0, 12000), fields: readFields(el) }));
-      assertSelection();
-      return { result: { adapter: 'chrome-dom', fileKey, node, properties, visibleDescendants: descendants,
-        nodeCount: 1 + descendants.length, truncated: true, childrenTruncated: true,
-        truncations: ['DOM is virtualized. Only mounted rows and the selected node inspector were read; descendants have no inspected properties.'],
-        unavailable: ['complete hierarchy', 'absolute geometry', 'text style ranges not shown in inspector', 'variable definitions'],
-        guidance: 'Select a visible descendant by ID to read its Properties. Expand/scroll Layers manually for unmounted nodes. Do not infer absent properties.' } };
-    }
     if (method === 'begin_export') {
       if (params.format !== 'PNG') throw new Error('Unsupported export format');
       await waitFor(() => document.hasFocus(), 'Keep the Figma tab focused during export.');
@@ -365,6 +178,7 @@ export async function figmaAction(method, params, fileKey) {
       hover(copyAs);
       const command = await waitFor(() => [...document.querySelectorAll('[id]')].find(el => el.id.startsWith(`layerMenu-copy-as-${params.format.toLowerCase()}-`) && visible(el)));
       if (command.getAttribute('aria-disabled') === 'true') throw new Error('Figma does not allow copying this layer.');
+      nativeCopyStarted = true;
       activate(command);
       return { result: node };
     }
@@ -394,5 +208,5 @@ export async function figmaAction(method, params, fileKey) {
       } finally { bitmap.close(); }
     }
     throw new Error('Unsupported browser operation');
-  } catch (error) { return { error: error.message || 'Browser operation failed' }; }
+  } catch (error) { return { error: error.message || 'Browser operation failed', ...(method === 'begin_export' ? { nativeCopyStarted } : {}) }; }
 }

@@ -22,7 +22,7 @@ const schema = parseSchema(`
  struct ParentIndex { GUID guid; string position; }
  struct Vector { float x; float y; }
  message NodeChange { GUID guid = 1; NodePhase phase = 2; ParentIndex parentIndex = 3; string type = 4; string name = 5; bool visible = 6; float opacity = 7; Vector size = 8; string stackMode = 9; string unknown = 10; uint nameTag = 11; }
- message UserChange { uint sessionID = 1; string name = 2; bool connected = 3; string unknown = 4; GUID focusedSlideId = 5; string designFullPageViewState = 6; }
+ message UserChange { uint sessionID = 1; string name = 2; bool connected = 3; string unknown = 4; GUID focusedSlideId = 5; string designFullPageViewState = 6; GUID[] selection = 7; }
  message ClientBroadcast { uint sessionID = 1; string music = 2; string unknown = 3; }
  message Message { MessageType type = 1; NodeChange[] nodeChanges = 2; bool isRetransmission = 3; string signalName = 4; string signalPayload = 5; uint64 sentTimestamp = 6; string clientRenderedMetadata = 7; uint[] nodeChangeOrder = 8; ClientBroadcast[] broadcasts = 9; UserChange[] userChanges = 10; }
 `);
@@ -284,4 +284,24 @@ test('pending UI request accepts service packets and supported document updates 
  const page=await readStoredNetworkSnapshot(store,snapshot,query);
  assert.equal(page.freshness.status,'observed');
  assert.equal(page.nodes[1].name,'updated during UI');
+});
+
+test('local network selection distinguishes unknown, remote, single, multiple and cleared selection', async t => {
+ const {store,sender,bridge}=await capture(t);
+ assert.throws(()=>store.currentSelection('test'),/not been observed/);
+ let sequence=4;
+ const presence=async(kind, userChanges)=>sender.delta(encodeRecord({...record(zstd(codec.encodeMessage({type:'USER_CHANGES',userChanges})),sequence++),kind}));
+ await presence('ws-received',[{sessionID:55,selection:[guid(9)]}]);
+ assert.throws(()=>store.currentSelection('test'),/not been observed/);
+ await presence('ws-sent',[{sessionID:1,selection:[guid(3)]}]);
+ assert.deepEqual(store.currentSelection('test').ids,['1:3']);
+ await presence('ws-sent',[{sessionID:1,name:'private user name'}]);
+ await presence('ws-received',[{sessionID:55,selection:[]}]);
+ assert.deepEqual(store.currentSelection('test').ids,['1:3']);
+ await presence('ws-sent',[{sessionID:1,selection:[guid(3),guid(4),guid(3)]}]);
+ assert.deepEqual(store.currentSelection('test').ids,['1:3','1:4']);
+ await presence('ws-sent',[{sessionID:1,selection:[]}]);
+ assert.deepEqual(store.currentSelection('test').ids,[]);
+ await bridge.close();
+ assert.throws(()=>store.currentSelection('test'),/STALE/);
 });

@@ -18,7 +18,7 @@ export class Bridge {
   private transfers = new Set<NetworkTransfer>();
   private get captureBusy() { return [...this.transfers].some(transfer => transfer.busy); }
   readonly ready: Promise<void>;
-  constructor(private secret: string, port = 3055, private timeout = 30_000, private cacheControl?: (action: 'cache-info' | 'cache-clear') => Promise<unknown>, private captureStore?: Pick<NetworkStore, 'begin' | 'observe' | 'renewObservation' | 'applyLive'>) {
+  constructor(private secret: string, port = 3055, private timeout = 30_000, private cacheControl?: (action: 'cache-info' | 'cache-clear') => Promise<unknown>, private captureStore?: Pick<NetworkStore, 'begin' | 'observe' | 'renewObservation' | 'applyLive' | 'setSelection'>) {
     this.server = new WebSocketServer({ host: '127.0.0.1', port, maxPayload: MAX_MESSAGE,
       perMessageDeflate: false, backlog: 8 });
     this.ready = new Promise((resolve, reject) => {

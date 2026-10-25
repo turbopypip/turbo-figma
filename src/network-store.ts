@@ -16,7 +16,7 @@ export type FrameIdentity = z.infer<typeof frameSchema>;
 const ownerSchema = z.object({ owner: z.literal('figma-kilo-mcp'), version: z.literal(1), snapshot: identitySchema, frame: frameSchema.optional() }).strict();
 export const CACHE_RETENTION = { maxBytes: 1024 * 1024 * 1024, maxAgeMs: 7 * 24 * 60 * 60 * 1000 } as const;
 export type CacheInfo = { bytes: number; generations: number; incomplete: number; protectedEntries: number };
-type Coordinator = { busy: boolean; writerActive: boolean; readers: number; observation?: { snapshot: SnapshotIdentity; key: string; controller: AbortController; expires: number; ttl: number; revision: number; updating: boolean }; liveHandler?: { key: string; apply: (payload: string) => Promise<void> }; invalidators?: Set<() => Promise<void>> };
+type Coordinator = { busy: boolean; writerActive: boolean; readers: number; observation?: { snapshot: SnapshotIdentity; key: string; controller: AbortController; expires: number; ttl: number; revision: number; selection?: string[]; updating: boolean }; liveHandler?: { key: string; apply: (payload: string) => Promise<void> }; invalidators?: Set<() => Promise<void>> };
 const coordinators = new Map<string, WeakRef<Coordinator>>();
 const manifestSchema = z.object({ version: z.literal(1), status: z.literal('ready'), monitored: z.literal(true).optional(), snapshot: identitySchema, frame: frameSchema.optional(),
   parts: z.array(z.object({ bytes: z.number().int().min(1).max(MAX_PART_BYTES),
@@ -101,6 +101,18 @@ export class NetworkStore {
     if (!owner || owner.snapshot.fileKey !== fileKey) throw new Error('No observed snapshot for this file. Use Reload and capture in the extension.');
     this.checkObservation(owner);
     return { ...owner.snapshot };
+  }
+  setSelection(controller: AbortController, ids: string[] | undefined) {
+    const owner = this.coordinator.observation;
+    if (!owner || owner.controller !== controller) throw new Error('STALE: observation replaced');
+    this.checkObservation(owner);
+    owner.selection = ids?.slice();
+  }
+  currentSelection(fileKey: string) {
+    const snapshot = this.currentSnapshot(fileKey);
+    const ids = this.coordinator.observation!.selection;
+    if (!ids) throw new Error('Current selection has not been observed on the network. Select the layer again or supply a selection URL.');
+    return { snapshot, ids: ids.slice() };
   }
   renewObservation(controller: AbortController) {
     const observation = this.coordinator.observation;

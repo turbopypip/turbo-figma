@@ -1,6 +1,5 @@
 import { createNetworkCollector } from './network-collector.js';
 import { figmaAction } from './dom.js';
-import { enrichContext } from './layout.js';
 import { parseSelectionLink } from './link.js';
 import { installDownloadCapture, readDownloadCapture } from './download.js';
 
@@ -17,16 +16,20 @@ export function createConnection(chrome, { WebSocket = globalThis.WebSocket, tim
   async function invoke(method, params) {
     const results = await chrome.scripting.executeScript({ target: { tabId }, func: figmaAction, args: [method, params, fileKey] });
     const value = results[0]?.result;
-    if (!value || value.error) throw new Error(value?.error || 'No response from the Figma tab. Click the extension icon on that tab again.');
-    return method === 'get_design_context' ? enrichContext(value.result) : value.result;
+    if (!value || value.error) {
+      const error = new Error(value?.error || 'No response from the Figma tab. Click the extension icon on that tab again.');
+      if (value?.nativeCopyStarted === false) error.nativeCopyStarted = false;
+      throw error;
+    }
+    return value.result;
   }
   async function nativeDownload(func, args) {
     const results = await chrome.scripting.executeScript({ target: { tabId }, world: 'MAIN', func, args });
     return results[0]?.result;
   }
   async function request(method, params, connection) {
-    if (!['get_selection', 'get_design_context', 'get_screenshot', 'export_asset'].includes(method)) throw new Error('Unsupported MCP method');
-    if (method === 'get_design_context' || params.url) {
+    if (!['get_screenshot', 'export_asset'].includes(method)) throw new Error('Unsupported MCP method');
+    if (params.url) {
       const tab = await chrome.tabs.get(tabId);
       await chrome.windows.update(tab.windowId, { focused: true });
       await chrome.tabs.update(tabId, { active: true });
@@ -36,7 +39,13 @@ export function createConnection(chrome, { WebSocket = globalThis.WebSocket, tim
       let ready = false;
       // Figma may retain its existing selection on same-file URL navigation.
       // Prefer selecting the exact linked ID through Layers when already mounted.
-      try { await invoke('select_node', { nodeId: target.nodeId, mountedOnly: true }); ready = true; } catch { /* Try link navigation below. */ }
+      try { await invoke('select_node', { nodeId: target.nodeId, ...(method === 'get_screenshot' ? { ancestors: params.ancestors } : { mountedOnly: true }) }); ready = true; }
+      catch (error) {
+        // Navigation destroys the observed snapshot. Screenshot selection must
+        // succeed in the current document or fail without ending the capture.
+        if (method === 'get_screenshot') throw error;
+        // Asset export retains its existing link navigation fallback.
+      }
       if (!ready) {
         const currentTab = await chrome.tabs.get(tabId);
         const currentUrl = new URL(currentTab.url || 'about:blank');
@@ -46,15 +55,15 @@ export function createConnection(chrome, { WebSocket = globalThis.WebSocket, tim
         const until = Date.now() + 6000;
         while (Date.now() < until) {
           if (connection !== socket || connection.readyState !== WebSocket.OPEN) throw new Error('Connection closed.');
-          try { await invoke('select_node', { nodeId: target.nodeId, mountedOnly: true }); ready = true; break; }
+          try { await invoke('select_node', { nodeId: target.nodeId, ...(method === 'get_screenshot' ? { ancestors: params.ancestors } : { mountedOnly: true }) }); ready = true; break; }
           catch { /* Same-file navigation can briefly unload the document. */ }
           await new Promise(resolve => timers.setTimeout(resolve, 150));
         }
         if (!ready) {
-          try { await invoke('select_node', { nodeId: target.nodeId }); ready = true; } catch { /* Report the exact limitation. */ }
+          try { await invoke('select_node', { nodeId: target.nodeId, ...(method === 'get_screenshot' ? { ancestors: params.ancestors } : {}) }); ready = true; } catch { /* Report the exact limitation. */ }
         }
       }
-      if (!ready) throw new Error('Linked node is not available in Layers yet. Retry after the file loads; if its ancestors remain collapsed, request their context first.');
+      if (!ready) throw new Error('Linked node is not available in Layers yet. Retry after the file loads; if its ancestors remain collapsed, retry with a fresh network capture.');
       params = { ...params, nodeId: target.nodeId };
     }
     if (!['get_screenshot', 'export_asset'].includes(method)) return invoke(method, params);
@@ -86,7 +95,12 @@ export function createConnection(chrome, { WebSocket = globalThis.WebSocket, tim
     }
     exportUncertain = true;
     await saveSession();
-    const node = await invoke('begin_export', { ...params, marker, format });
+    let node;
+    try { node = await invoke('begin_export', { ...params, marker, format }); }
+    catch (error) {
+      if (method === 'get_screenshot' && error.nativeCopyStarted === false) { exportUncertain = false; await saveSession(); }
+      throw error;
+    }
     const deadline = Date.now() + 20_000;
     while (Date.now() < deadline) {
       if (connection !== socket || connection.readyState !== WebSocket.OPEN) throw new Error('Connection closed; export stopped.');

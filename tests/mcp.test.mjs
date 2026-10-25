@@ -36,8 +36,8 @@ test('real stdio MCP session: discovery, context, image, disk export, EOF cleanu
   const client = new Client({ name: 'integration-test', version: '1.0.0' });
   t.after(() => client.close()); await client.connect(transport);
   const { tools } = await client.listTools();
-  for(const name of ['get_design_context','get_network_tree']) assert.equal(tools.find(t=>t.name===name).inputSchema.properties.maxBytes.default,24000);
-  assert.deepEqual(tools.map(t => t.name).sort(), ['export_assets', 'get_connection_status', 'get_design_context', 'get_network_tree', 'get_screenshot', 'get_selection']);
+  for(const name of ['get_design_context']) assert.equal(tools.find(t=>t.name===name).inputSchema.properties.maxBytes.default,24000);
+  assert.deepEqual(tools.map(t => t.name).sort(), ['export_assets', 'get_connection_status', 'get_design_context', 'get_screenshot', 'get_selection']);
   const status = async () => JSON.parse((await client.callTool({name: 'get_connection_status', arguments: {}})).content[0].text);
   assert.equal((await status()).state, 'disconnected');
   assert.equal((await status()).mcp, 'running');
@@ -49,27 +49,28 @@ test('real stdio MCP session: discovery, context, image, disk export, EOF cleanu
   const ws = await pair(port, secret, (method, params) => {
     assert.equal(params.variablesFile, undefined);
     if (method === 'get_design_context') uiReads++;
+    if (method === 'get_selection') throw Error('DOM selection must never be called');
+    if (method === 'get_screenshot' && params.nodeId === '1:2') {
+      assert.deepEqual(params.ancestors, ['1:1']);
+      return mockBrowser(method, {}); // Simulate stale/wrong browser selection.
+    }
     const result = mockBrowser(method, params);
     return method === 'get_design_context' ? { ...result, layout: { css: {gap:'32px'} } } : { ...result, fileKey: 'test' };
   }, 'test'); t.after(() => ws.terminate());
   assert.equal((await status()).state, 'connected');
   assert.equal(JSON.stringify(await status()).includes(secret), false);
   const selection = await client.callTool({ name: 'get_selection', arguments: {} });
-  assert.equal(JSON.parse(selection.content[0].text).nodes[0].id, '1:1');
-  const context = await client.callTool({ name: 'get_design_context', arguments: { source: 'ui' } });
-  assert.equal(JSON.parse(context.content[0].text).nodeCount, 2);
+  assert.equal(selection.isError, true); // No observed snapshot yet; never read mounted rows.
+  const rejectedUI = await client.callTool({ name: 'get_design_context', arguments: { source: 'ui' } });
+  assert.equal(rejectedUI.isError, true);
+  assert.equal(uiReads, 0);
   const variablesFile = path.join(dir, 'variables.scss');
-  await writeFile(variablesFile, ':root { --mimir-space-2xl: 32px; }');
-  const mapped = await client.callTool({ name: 'get_design_context', arguments: { variablesFile, source: 'ui' } });
-  assert.equal(JSON.parse(mapped.content[0].text).layout.css.gap, 'var(--mimir-space-2xl)');
-  await writeFile(variablesFile, ':root { --mimir-space-2xl: 40px; }');
-  const refreshed = await client.callTool({ name: 'get_design_context', arguments: { variablesFile, source: 'ui' } });
-  assert.equal(JSON.parse(refreshed.content[0].text).layout.css.gap, '32px');
   // Network route uses the same configured file, supports a request override and never calls the UI bridge.
   const schema=parseSchema(`struct GUID { uint sessionID; uint localID; }
     struct Parent { GUID guid; string position; }
     message NodeChange { Parent parentIndex = 6; GUID guid = 1; string phase = 2; string type = 3; float fontSize = 4; string textData = 5; }
-    message Message { string type = 1; NodeChange[] nodeChanges = 2; }`);
+    message UserChange { GUID[] selection = 1; }
+    message Message { string type = 1; NodeChange[] nodeChanges = 2; UserChange[] userChanges = 3; }`);
   const codec=compileSchema(schema),header=Buffer.alloc(12);header.write('fig-wire');header.writeUInt32LE(1,8);
   const payloads=[Buffer.concat([header,zstd(encodeBinarySchema(schema))]),
     ...[{type:'JOIN_START'},{type:'NODE_CHANGES',nodeChanges:[{guid:{sessionID:1,localID:1},phase:'CREATED',type:'TEXT',fontSize:20,textData:'Text'}, {guid:{sessionID:1,localID:2},phase:'CREATED',type:'TEXT',parentIndex:{guid:{sessionID:1,localID:1},position:'!'},fontSize:20,textData:'Child'}]},{type:'JOIN_END'}].map(m=>zstd(codec.encodeMessage(m)))];
@@ -79,14 +80,7 @@ test('real stdio MCP session: discovery, context, image, disk export, EOF cleanu
     ...payloads.map(b=>({kind:'ws-received',key:'a',opcode:2,payload:b.toString('base64')}))]}));
   await writeFile(variablesFile,':root { --mimir-size-text-default:20px; }');
   const networkArgs={captureFile,url:'https://www.figma.com/design/test/File?node-id=1-1'};
-  const network=await client.callTool({name:'get_network_tree',arguments:networkArgs});
-  assert.equal(network.isError,undefined);
-  assert.equal(JSON.parse(network.content[0].text).nodes[0].layout.css['font-size'],'var(--mimir-size-text-default)');
-  const overrideFile=path.join(dir,'override.scss');await writeFile(overrideFile,':root { --mimir-size-text-override:20px; }');
-  const override=await client.callTool({name:'get_network_tree',arguments:{...networkArgs,variablesFile:overrideFile}});
-  const overrideNode=JSON.parse(override.content[0].text).nodes[0];
-  assert.equal(overrideNode.layout.css['font-size'],'var(--mimir-size-text-override)');
-  assert.equal(overrideNode.layout.resolvedValues['font-size'],'20px');
+  await assert.rejects(client.callTool({name:'get_network_tree',arguments:networkArgs}),/not found/);
   const primaryArgs = { url: networkArgs.url, maxNodes: 1 };
   const uiBefore = uiReads;
   const missing = await client.callTool({name:'get_design_context',arguments:primaryArgs});
@@ -95,6 +89,20 @@ test('real stdio MCP session: discovery, context, image, disk export, EOF cleanu
   await sender.begin();
   for (const [eventSequence, b] of payloads.entries()) await sender.append(Buffer.from(JSON.stringify({version:1,kind:'ws-received',session:'main',requestId:'1',eventSequence,opcode:2,payload:b.toString('base64')})+'\n'));
   await sender.finish({schemaReceived:true,joinStarted:true,joinEnded:true,receivedParts:payloads.length,droppedParts:0,sequenceComplete:true});
+  const unknownSelection = await client.callTool({name:'get_selection',arguments:{}});
+  assert.equal(unknownSelection.isError, true);
+  await sender.delta(Buffer.from(JSON.stringify({version:1,kind:'ws-sent',session:'main',requestId:'1',eventSequence:4,opcode:2,
+    payload:zstd(codec.encodeMessage({type:'USER_CHANGES',userChanges:[{selection:[{sessionID:1,localID:1}]}]})).toString('base64')})+'\n'));
+  const observed = await client.callTool({name:'get_selection',arguments:{}});
+  assert.equal(observed.isError, undefined, JSON.stringify(observed));
+  assert.equal(JSON.parse(observed.content[0].text).nodes[0].id,'1:1');
+  const network=await client.callTool({name:'get_design_context',arguments:{url:networkArgs.url}});
+  assert.equal(JSON.parse(network.content[0].text).nodes[0].layout.css['font-size'],'var(--mimir-size-text-default)');
+  const overrideFile=path.join(dir,'override.scss');await writeFile(overrideFile,':root { --mimir-size-text-override:20px; }');
+  const override=await client.callTool({name:'get_design_context',arguments:{url:networkArgs.url,variablesFile:overrideFile}});
+  const overrideNode=JSON.parse(override.content[0].text).nodes[0];
+  assert.equal(overrideNode.layout.css['font-size'],'var(--mimir-size-text-override)');
+  assert.equal(overrideNode.layout.resolvedValues['font-size'],'20px');
   const primary = await client.callTool({name:'get_design_context',arguments:primaryArgs});
   assert.ok(primary.content[0].text.startsWith('{"traversal":'));
   assert.ok(Buffer.byteLength(primary.content[0].text)<=24000);
@@ -114,6 +122,9 @@ test('real stdio MCP session: discovery, context, image, disk export, EOF cleanu
   assert.equal(uiReads, uiBefore);
   const screenshot = await client.callTool({ name: 'get_screenshot', arguments: {} });
   assert.equal(screenshot.content[0].mimeType, 'image/png'); assert.equal(screenshot.content[0].data, PNG);
+  const wrongImage = await client.callTool({name:'get_screenshot', arguments:{nodeId:'1:2'}});
+  assert.equal(wrongImage.isError, true);
+  assert.match(wrongImage.content[0].text, /selection does not match/);
   const assets = await client.callTool({ name: 'export_assets', arguments: { nodeIds: ['1:1', 'missing'], format: 'SVG' } });
   const result = JSON.parse(assets.content[0].text);
   assert.match(await readFile(result.results[0].path, 'utf8'), /<svg/); assert.match(result.results[1].error, /not mounted/);
