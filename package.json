@@ -7,26 +7,16 @@
     "node": ">=20.12"
   },
   "scripts": {
-    "build": "tsc",
-    "check": "tsc --noEmit && node --check extension/popup.js && node --check extension/badge.js && node --check extension/background.js && node --check extension/connection.js && node --check extension/dom.js && node --check extension/download.js && node --check extension/layout.js && node --check extension/link.js && node --check extension/network-transfer.js && node --check extension/network-collector.js && node --check extension/network-popup.js",
-    "test": "npm run build && node --test tests/*.test.mjs",
-    "start": "node dist/index.js",
+    "build": "node scripts/build-rust.mjs",
+    "build:rust": "node scripts/build-rust.mjs",
+    "check": "node scripts/check.mjs && node scripts/build-rust.mjs check",
+    "test": "npm run build && node scripts/build-rust.mjs test && node --test tests/*.test.mjs",
     "setup": "node scripts/setup.mjs",
-    "measure": "node scripts/measure.mjs",
-    "measure:network": "npm run build && node scripts/measure-network-pipeline.mjs",
-    "measure:network:disk": "npm run build && node scripts/measure-network-disk.mjs"
-  },
-  "dependencies": {
-    "@modelcontextprotocol/server": "^2.3.1",
-    "fzstd": "0.1.1",
-    "kiwi-schema": "0.5.0",
-    "ws": "^8.22.0",
-    "zod": "^4.6.7"
+    "start": "node scripts/start.mjs"
   },
   "devDependencies": {
-    "@modelcontextprotocol/client": "^2.3.1",
-    "@types/node": "^22.20.5",
-    "@types/ws": "^8.18.2",
-    "typescript": "^7.0.2"
+    "kiwi-schema": "0.5.0",
+    "ws": "^8.22.0",
+    "@modelcontextprotocol/client": "^2.3.1"
   }
 }

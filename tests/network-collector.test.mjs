@@ -134,12 +134,11 @@ test('normal detach event during stop preserves terminal status',async()=>{
 
 test('connection routes capture into disk store and disconnect removes debugger without browser-storage payloads',async t=>{
   const {createConnection}=await import('../extension/connection.js');
-  const {Bridge}=await import('../dist/bridge.js');const {NetworkStore}=await import('../dist/network-store.js');
-  const {WebSocket}=await import('ws');const {mkdtemp,rm,readdir,readFile}=await import('node:fs/promises');
-  const {tmpdir}=await import('node:os');const {join}=await import('node:path');
-  const directory=await mkdtemp(join(tmpdir(),'collector-integration-'));
-  const store=await NetworkStore.create(directory);const secret='a'.repeat(64);
-  const bridge=new Bridge(secret,0,3000,undefined,store);await bridge.ready;
+  const {createNativeServer}=await import('./native-server.mjs');
+  const {WebSocket}=await import('ws');const {readdir,readFile}=await import('node:fs/promises');
+  const {join}=await import('node:path');
+  const secret='a'.repeat(64);
+  const bridge=await createNativeServer(secret);const store={root:join(bridge.dir,'.cache/figma-network')};
   const stored={};let event,detaches=0;
   const chrome={debugger:{onEvent:{addListener:f=>{event=f;}},onDetach:{addListener(){}},
     attach:async()=>{},detach:async()=>{detaches++;},sendCommand:async()=>{}},
@@ -147,7 +146,7 @@ test('connection routes capture into disk store and disconnect removes debugger 
     scripting:{executeScript:async()=>[{result:{result:{id:'1:1'}}}]},
     tabs:{get:async id=>({id,url:'https://www.figma.com/design/test/File'}),reload:async()=>{}},alarms:{create:async()=>{},clear:async()=>{}}};
   const connection=createConnection(chrome,{WebSocket});
-  t.after(async()=>{await connection.control({action:'disconnect'});await bridge.close();await rm(directory,{recursive:true,force:true});});
+  t.after(async()=>{await connection.control({action:'disconnect'});await bridge.close();});
   await connection.ready;await connection.control({action:'connect',tabId:7,port:bridge.port,secret});
   const wait=async predicate=>{const until=Date.now()+3000;while(!await predicate()){if(Date.now()>until)throw Error('Timeout');await new Promise(r=>setTimeout(r,5));}};
   await wait(async()=>(await connection.control({action:'status'})).state==='connected');
@@ -170,8 +169,8 @@ test('connection routes capture into disk store and disconnect removes debugger 
   assert.equal(manifest.parts.length,4);
   assert.equal((await connection.control({action:'status'})).capture.complete,true);
   assert.equal(detaches,0);
-  assert.equal(store.freshness(manifest).aborted,false);
-  await assert.rejects(bridge.request('get_selection',{}),/Unsupported/);
+  assert.equal((await bridge.status()).connected,true);
+
   await connection.tabChanged(7,{url:'https://www.figma.com/design/other/File'},{id:7,url:'https://www.figma.com/design/other/File'});
   assert.equal(detaches,1);assert.equal((await connection.control({action:'status'})).capture.state,'stale');
 });
