@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
-import { callHelper, defaultBinary } from '../scripts/rust-helper/host.mjs';
+import { callHelper, defaultBinary } from './native-process.mjs';
 
 const available = existsSync(defaultBinary);
 if (process.env.REQUIRE_RUST_HELPER === '1' && !available) throw new Error('Build the release Rust helper before testing');

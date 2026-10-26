@@ -2,11 +2,13 @@
   "mcp": {
     "figma": {
       "type": "local",
-      "command": ["node", "C:/tools/figma-kilo-mcp/dist/index.js"],
+      "command": [
+        "C:/tools/figma-kilo-mcp/rust/helper/target/release/figma-rust-helper.exe",
+        "--server",
+        "C:/tools/figma-kilo-mcp/.local/config.json",
+        "C:/tools/figma-kilo-mcp"
+      ],
       "enabled": true,
-      "environment": {
-        "FIGMA_KILO_CONFIG": "C:/tools/figma-kilo-mcp/.local/config.json"
-      },
       "timeout": 60000
     }
   }

@@ -9,6 +9,8 @@ if (args.length !== 2 || args[0] !== '--assets' || !path.isAbsolute(args[1])) {
   console.error('Usage: npm run setup -- --assets <absolute-directory>');
   process.exit(1);
 }
+const binary = process.env.FIGMA_RUST_BINARY ?? path.join(root, `rust/helper/target/release/figma-rust-helper${process.platform === 'win32' ? '.exe' : ''}`);
+if (!existsSync(binary)) throw new Error('Rust binary not found. Run npm run build first.');
 const local = path.join(root, '.local');
 await mkdir(local, { recursive: true, mode: 0o700 });
 const configPath = path.join(local, 'config.json');
@@ -24,11 +26,9 @@ if (config) {
   await writeFile(configPath, JSON.stringify(config, null, 2) + '\n', { flag: 'wx', mode: 0o600 });
 }
 await writeFile(path.join(local, 'pairing.txt'), `Figma Kilo Browser Bridge\nEndpoint: ws://127.0.0.1:${config.port}\nSecret: ${config.secret}\n`, { mode: 0o600 });
-const binary = process.env.FIGMA_RUST_BINARY ?? path.join(root, `rust/helper/target/release/figma-rust-helper${process.platform === 'win32' ? '.exe' : ''}`);
-const native = (process.env.FIGMA_NETWORK_BACKEND ?? (['darwin', 'win32'].includes(process.platform) ? 'rust' : 'node')) === 'rust' && existsSync(binary);
-const command = native ? [binary, '--server', configPath, root] : [process.execPath, path.join(root, 'dist/index.js')];
+const command = [binary, '--server', configPath, root];
 await writeFile(path.join(local, 'kilo.json'), JSON.stringify({ mcp: { figma: {
   type: 'local', command, enabled: true,
-  environment: { FIGMA_KILO_CONFIG: configPath }, timeout: 60000
+  timeout: 60000
 } } }, null, 2) + '\n');
 console.log(`Setup ready. Merge ${path.join(local, 'kilo.json')} into your Kilo config.\nLoad ${path.join(root, 'extension')} as an unpacked Chrome extension.\nPaste the secret from ${path.join(local, 'pairing.txt')} into its connection form. Do not share these files.`);

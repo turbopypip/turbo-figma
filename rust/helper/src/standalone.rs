@@ -1,4 +1,4 @@
-//! Standalone MCP + browser bridge. Node is only an optional compatibility launcher.
+//! Standalone MCP + browser bridge. Rust owns both transports and the snapshot engine.
 use crate::engine::Handle;
 use futures_util::{SinkExt, StreamExt};
 use rmcp::{model::*, service::RequestContext, ErrorData, RoleServer, ServerHandler, ServiceExt};

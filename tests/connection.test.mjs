@@ -80,15 +80,15 @@ test('badge text, color and tooltip track serialized final state',async()=>{
   await show('disconnected');assert.equal(values.setBadgeText.text,'OFF');
 });
 test('real WebSocket bridge restarts and background reconnects without replay',async()=>{
-  const {WebSocket}=await import('ws');const {Bridge}=await import('../dist/bridge.js');
-  let bridge=new Bridge(secret,0);await bridge.ready;const port=bridge.port;
+  const {WebSocket}=await import('ws');const {createNativeServer}=await import('./native-server.mjs');
+  let bridge=await createNativeServer(secret);const port=bridge.port;
   const f=await fixture({port,secret},target,{WebSocket,timers:globalThis});
   const wait=async predicate=>{const deadline=Date.now()+5000;while(!predicate()){if(Date.now()>deadline)throw Error('timeout');await new Promise(r=>setTimeout(r,20));}};
   try {
-    await wait(()=>f.states.at(-1)==='connected');await assert.rejects(bridge.request('get_selection',{}),/Unsupported/);
-    await bridge.close();await wait(()=>f.states.at(-1)==='connecting');
-    bridge=new Bridge(secret,port);await bridge.ready;await wait(()=>f.states.at(-1)==='connected');
-    assert.equal(f.requests,0);await assert.rejects(bridge.request('get_selection',{}),/Unsupported/);
+    await wait(()=>f.states.at(-1)==='connected');assert.equal((await bridge.status()).connected,true);
+    process.kill(bridge.transport.pid,'SIGKILL');await bridge.close();await wait(()=>f.states.at(-1)==='connecting');
+    bridge=await createNativeServer(secret,port);await wait(()=>f.states.at(-1)==='connected');
+    assert.equal(f.requests,0);assert.equal((await bridge.status()).connected,true);
   } finally {await f.controller.control({action:'disconnect'});await bridge.close();}
 });
 test('popup close only stops UI refresh; information goes directly to README',async()=>{
@@ -105,8 +105,8 @@ test('popup close only stops UI refresh; information goes directly to README',as
 });
 test('one secret entry pairs different Figma tabs and files, including after browser restart', async()=>{
   const {WebSocket}=await import('ws');
-  const {Bridge}=await import('../dist/bridge.js');
-  const bridge=new Bridge(secret,0);await bridge.ready;
+  const {createNativeServer}=await import('./native-server.mjs');
+  const bridge=await createNativeServer(secret);
   const port=bridge.port;
   const f=await fixture(undefined,undefined,{WebSocket,timers:globalThis});
   const targets=new Map([[7,'first'],[8,'second'],[9,'first']]);
@@ -132,7 +132,7 @@ test('one secret entry pairs different Figma tabs and files, including after bro
       assert.equal(result.error,undefined);
       await waitConnected(f.controller);
       assert.equal(f.local.pairing.secret,secret);
-      await assert.rejects(bridge.request('get_selection',{}),/Unsupported/);
+      assert.equal((await bridge.status()).connected,true);
       assert.equal((await f.controller.control({action:'status'})).fileKey,targets.get(tabId));
     }
     assert.deepEqual(visited,[]);
@@ -143,7 +143,7 @@ test('one secret entry pairs different Figma tabs and files, including after bro
     const result=await restarted.controller.control({action:'connect',tabId:10,port,secret:''});
     assert.equal(result.error,undefined);
     await waitConnected(restarted.controller);
-    await assert.rejects(bridge.request('get_selection',{}),/Unsupported/);
+    assert.equal((await bridge.status()).connected,true);
   } finally {
     await f.controller.control({action:'disconnect'});
     await restarted?.controller.control({action:'disconnect'});

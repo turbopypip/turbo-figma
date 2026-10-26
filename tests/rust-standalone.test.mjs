@@ -1,16 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {existsSync} from 'node:fs';
-import {mkdtemp,writeFile,rm,readdir,readFile} from 'node:fs/promises';
+import {writeFile,readdir,readFile} from 'node:fs/promises';
 import path from 'node:path';
-import os from 'node:os';
 import net from 'node:net';
 import {once} from 'node:events';
 import {WebSocket} from 'ws';
-import {Client} from '@modelcontextprotocol/client';
-import {StdioClientTransport} from '@modelcontextprotocol/client/stdio';
 import {parseSchema,compileSchema,encodeBinarySchema} from 'kiwi-schema';
-import {rustBinary} from '../dist/network-rust.js';
+import {rustBinary,createNativeServer} from './native-server.mjs';
 import {createCaptureSender} from '../extension/network-transfer.js';
 import {pair,mockBrowser} from './helpers.mjs';
 import {zstd} from './wire-fixture.mjs';
@@ -24,12 +21,12 @@ const bytes=v=>Buffer.from(JSON.stringify(v)+'\n');
 const message=(m,eventSequence,kind='ws-received')=>({version:1,kind,session:'main',requestId:'stream',eventSequence,opcode:2,payload:zstd(codec.encodeMessage(m)).toString('base64')});
 const args={url:'https://www.figma.com/design/test/File?node-id=1-1',depth:4,maxNodes:1};
 async function setup(t,respond=mockBrowser){
- const dir=await mkdtemp(path.join(os.tmpdir(),'native-figma-'));const probe=net.createServer();await new Promise(r=>probe.listen(0,'127.0.0.1',r));const port=probe.address().port;await new Promise(r=>probe.close(r));
- const secret='s'.repeat(64),config=path.join(dir,'config.json');await writeFile(config,JSON.stringify({secret,port,assetDirectory:path.join(dir,'assets')}));
- const transport=new StdioClientTransport({command:rustBinary,args:['--server',config,dir],stderr:'pipe'});let diagnostics='';transport.stderr.on('data',b=>diagnostics+=b);const client=new Client({name:'native-test',version:'1'});await client.connect(transport);assert.match(diagnostics,/standalone/);
- const ws=await pair(port,secret,respond,'test');t.after(async()=>{ws.terminate();await client.close();await rm(dir,{recursive:true,force:true});});
- return {dir,port,secret,client,ws,transport,call:async(arguments_=args)=>client.callTool({name:'get_design_context',arguments:arguments_})};
+ const secret='s'.repeat(64),server=await createNativeServer(secret);let ws;
+ t.after(async()=>{ws?.terminate();await server.close();});
+ ws=await pair(server.port,secret,respond,'test');
+ return {...server,secret,ws,call:async(arguments_=args)=>server.client.callTool({name:'get_design_context',arguments:arguments_})};
 }
+
 async function capture(s){const sender=createCaptureSender(s.ws,{fileKey:'test',sessionId:'native',generation:1});await sender.begin();const header=Buffer.alloc(12);header.write('fig-wire');header.writeUInt32LE(1,8);const schemaRecord={version:1,kind:'ws-received',session:'main',requestId:'stream',eventSequence:0,opcode:2,payload:Buffer.concat([header,zstd(encodeBinarySchema(schema))]).toString('base64')};
  const nodes=[{guid:g(1),phase:'CREATED',type:'FRAME',name:'Root',stackMode:'VERTICAL'},...Array.from({length:3},(_,i)=>({guid:g(i+2),phase:'CREATED',type:'RECTANGLE',name:`Child ${i}`,parentIndex:{guid:g(1),position:String(i)}}))];
  const records=[schemaRecord,message({type:'JOIN_START'},1),message({type:'NODE_CHANGES',nodeChanges:nodes},2),message({type:'JOIN_END'},3)];for(const r of records)await sender.append(bytes(r));await sender.finish({schemaReceived:true,joinStarted:true,joinEnded:true,receivedParts:4,droppedParts:0,sequenceComplete:true});return sender;}
@@ -75,4 +72,22 @@ test('standalone service traffic does not spend the document mutation budget',na
  for(let i=0;i<130;i++)await sender.delta(bytes(message({type:'SIGNAL',signalName:'reconnect-sequence-number',signalPayload:String(i)},4+i)));
  await sender.delta(bytes(message({type:'NODE_CHANGES',nodeChanges:[{guid:g(2),name:'After service traffic'}]},134)));
  const result=JSON.parse((await s.call({...args,maxNodes:20})).content[0].text);assert.equal(result.freshness.revision,1);assert.equal(result.appliedLiveBatches,1);assert.equal(result.nodes[1].name,'After service traffic');
+});
+
+test('standalone exposes native tool schemas and exports confined PNG/SVG assets',native,async t=>{
+ const s=await setup(t);const sender=await capture(s);t.after(()=>sender.cancel());
+ const tools=await s.client.listTools();
+ const metadata=JSON.parse(await readFile(new URL('../rust/helper/resources/tools.json',import.meta.url),'utf8'));
+ assert.deepEqual(tools.tools.map(t=>t.name).sort(),metadata.tools.map(t=>t.name).sort());
+ for(const tool of tools.tools)assert.deepEqual(tool.inputSchema,metadata.tools.find(t=>t.name===tool.name).inputSchema);
+ const screenshot=await s.client.callTool({name:'get_screenshot',arguments:{nodeId:'1:1'}});
+ assert.equal(screenshot.isError,undefined,JSON.stringify(screenshot));assert.ok(screenshot.content.some(c=>c.type==='image'&&c.mimeType==='image/png'));
+ for(const format of ['PNG','SVG']){
+  const result=await s.client.callTool({name:'export_assets',arguments:{nodeIds:['1:1','1:2'],format}});
+  assert.equal(result.isError,undefined);
+  const files=await readdir(path.join(s.dir,'assets'));assert.equal(files.length,format==='PNG'?1:2);
+  const filename=files.find(f=>f.toLowerCase().endsWith('.'+format.toLowerCase()));assert.ok(filename);
+  const data=await readFile(path.join(s.dir,'assets',filename));assert.ok(data.length>0);
+  assert.match(result.content[0].text,/1:2/);assert.match(result.content[0].text,/not mounted/);
+ }
 });

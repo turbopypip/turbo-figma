@@ -1,6 +1,6 @@
 #Requires -Version 5.1
 <#
-Windows 10/11 x64: install build dependencies, build Rust + TypeScript, create MCP config.
+Windows 10/11 x64: install build dependencies, build Rust, create MCP config.
 Run: powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -Assets 'C:\Projects\site\public\figma'
 Use -SkipDependencies when Node, Rust and MSVC are already installed.
 The script does not run the test suite or change your Kilo configuration.
@@ -12,7 +12,7 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
-if ($env:OS -ne 'Windows_NT') { throw 'Use npm ci, npm run build:rust and npm run build on macOS/Linux.' }
+if ($env:OS -ne 'Windows_NT') { throw 'Use npm ci and npm run build on macOS/Linux.' }
 if (-not [Environment]::Is64BitOperatingSystem) { throw 'Windows x64 is required.' }
 $repoRoot = $PSScriptRoot
 $toolchain = '1.99.1-x86_64-pc-windows-msvc'
@@ -121,7 +121,6 @@ try {
     $env:RUSTUP_TOOLCHAIN = $toolchain
     Invoke-Checked 'rustup.exe' @('run', $toolchain, 'rustc', '--version')
     Invoke-Checked 'npm.cmd' @('ci')
-    Invoke-Checked 'npm.cmd' @('run', 'build:rust')
     Invoke-Checked 'npm.cmd' @('run', 'build')
     $binary = Join-Path $repoRoot 'rust\helper\target\release\figma-rust-helper.exe'
     if (-not (Test-Path $binary)) { throw "Build did not produce $binary" }
