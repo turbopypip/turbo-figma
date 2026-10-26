@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "minimum_chrome_version": "125",
   "name": "turbo-figma",
-  "version": "0.3.0",
+  "version": "1.0.0",
   "description": "Connect an explicitly selected Figma tab to a local turbo-figma MCP server.",
   "permissions": ["debugger", "alarms", "storage", "activeTab", "scripting"],
   "action": { "default_title": "turbo-figma", "default_popup": "popup.html" },
