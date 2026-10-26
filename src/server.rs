@@ -97,6 +97,7 @@ struct Server {
     asset: String,
     variables: Option<String>,
     read_busy: Arc<AtomicBool>,
+    snapshot_gate: Arc<tokio::sync::Mutex<()>>,
     export_busy: Arc<AtomicBool>,
     limit: Arc<Semaphore>,
 }
@@ -134,12 +135,12 @@ impl Server {
             && b.capture_error.is_none()
             && b.expires.is_some_and(|expires| Instant::now() < expires)
             && self.engine.observed(b.peer.as_ref().and_then(|p| p.file.as_deref()));
-        let reading = self.read_busy.load(Ordering::SeqCst);
-        v["readReady"] = json!(observed && !busy && !reading);
+        let snapshot_busy = b.capture_busy || b.cache_busy;
+        v["readReady"] = json!(observed && !snapshot_busy);
         v["snapshotState"] = json!(if b.capture_busy && connected { "capturing" } else if observed { "ready" } else { "capture_required" });
-        v["nextAction"] = json!(if !connected { "connect" } else if busy || reading { "wait" } else if !observed { "reload_and_capture" } else { "read" });
+        v["nextAction"] = json!(if !connected { "connect" } else if snapshot_busy { "wait" } else if !observed { "reload_and_capture" } else { "read" });
         v["scope"] = json!("Authenticated browser bridge and observed snapshot readiness for the paired file; selection, tab availability and export readiness are not checked.");
-        if connected && !busy && !reading && !observed {
+        if connected && !busy && !observed {
             v["message"] = json!("Мост Figma подключён, но актуального снимка нет. Нажми «Подключить» в расширении; после захвата начни чтение заново, без прежнего continuation.");
         }
         if let Some(last) = &b.last {
@@ -151,14 +152,20 @@ impl Server {
         v
     }
     async fn read(&self, query: Value) -> Result<Value> {
+        let owner = self.bridge.lock().unwrap().peer.as_ref().map(|p| p.id);
+        // Short snapshot reads queue independently of slow browser exports.
+        // Live deltas use the same gate so a read cannot invalidate the stream.
+        let _snapshot = self.snapshot_gate.lock().await;
         let _busy = Busy::acquire(&self.read_busy, "Network snapshot reader is busy")?;
         {
             let b = self.bridge.lock().unwrap();
-            if b.capture_busy || b.capture_work || b.cache_busy {
+            if owner != b.peer.as_ref().map(|p| p.id) {
+                return Err("STALE: observation ended while waiting to read".into());
+            }
+            if b.capture_busy || b.cache_busy {
                 return Err("Cache BUSY: reading or capturing; retry after completion".into());
             }
         }
-        let owner = self.bridge.lock().unwrap().peer.as_ref().map(|p| p.id);
         let result = self.engine.call(json!({"op":"read","query":query})).await;
         let current = self.bridge.lock().unwrap().peer.as_ref().map(|p| p.id);
         if owner != current {
@@ -177,7 +184,7 @@ impl Server {
         let peer = {
             let mut b = self.bridge.lock().unwrap();
             let p=b.peer.clone().ok_or("Figma browser extension is not connected. Open the file in Chrome, click turbo-figma and pair it using the local secret.")?;
-            if b.pending.is_some() || b.cache_busy || b.capture_busy || b.capture_work {
+            if b.pending.is_some() || b.cache_busy || b.capture_busy {
                 return Err("Figma is busy. Wait for the current request.".into());
             }
             b.pending = Some((id.clone(), tx));
@@ -292,6 +299,7 @@ impl Server {
                 ))
             }
             "get_screenshot" => {
+                let _busy = Busy::acquire(&self.export_busy, "Screenshot or asset export is busy")?;
                 let (file, id, url) = self.target(&p, true).await?;
                 let context=self.read(json!({"fileKey":file,"id":id,"depth":0,"maxNodes":1,"maxBytes":12000,"includeHidden":true})).await?;
                 if self.file().as_deref() != Some(&file) {
@@ -321,7 +329,7 @@ impl Server {
                 )
             }
             "export_assets" => {
-                let _busy = Busy::acquire(&self.export_busy, "Asset export is busy")?;
+                let _busy = Busy::acquire(&self.export_busy, "Screenshot or asset export is busy")?;
                 let mut ids = vec![];
                 for id in crate::instances::array(&p["nodeIds"]) {
                     if !ids.contains(id) {
@@ -628,7 +636,7 @@ async fn connection(server: Server, tcp: tokio::net::TcpStream, id: u64, secret:
         Some(Ok(Message::Text(t)))=>{let msg=serde_json::from_str::<Value>(&t);let Ok(msg)=msg else{let _=socket.send(close("Invalid bridge message")).await;code=1008;break;};match msg["type"].as_str(){
         Some("ping")=>{if socket.send(Message::Text(json!({"type":"pong"}).to_string().into())).await.is_err(){break;}},
         Some("response")=>{let mut b=server.bridge.lock().unwrap();if b.pending.as_ref().is_some_and(|(id,_)|msg["id"]==*id){let(_,reply)=b.pending.take().unwrap();let response=msg["error"].as_str().map(|e|Err(e.chars().take(500).collect())).unwrap_or_else(||Ok(msg["result"].clone()));let _=reply.send(response);}},
-        Some("capture")=>{let reject={let mut b=server.bridge.lock().unwrap();let action=msg["action"].as_str().unwrap_or("");let neutral=matches!(action,"heartbeat"|"delta");let reject=if b.capture_work{Some("Capture queue overflow: previous command is still pending")}else if b.peer.as_ref().and_then(|p|p.file.as_ref()).is_none_or(|file|msg["snapshot"]["fileKey"]!=*file)||(!neutral&&(b.pending.is_some()||b.cache_busy||server.read_busy.load(Ordering::SeqCst)))||(action=="delta"&&server.read_busy.load(Ordering::SeqCst)){Some("Capture busy or file mismatch")}else{None};if reject.is_none(){b.capture_work=true;if action=="begin"{b.capture_busy=true;}b.expires=Some(Instant::now()+Duration::from_secs(if b.capture_busy{30}else{15}));}reject};if let Some(e)=reject{let _=socket.send(Message::Text(json!({"type":"capture-error","error":e}).to_string().into())).await;let _=socket.send(close("Capture failed")).await;code=1008;break;}let task=server.clone();let output=tx.clone();tokio::spawn(async move{let result=task.engine.call(json!({"op":"capture","message":msg})).await;{let mut b=task.bridge.lock().unwrap();if b.peer.as_ref().is_none_or(|p|p.id!=id){return;}b.capture_work=false;match &result{Ok(r)=>{b.capture_busy=r["status"]!="ready";b.expires=Some(Instant::now()+Duration::from_secs(if b.capture_busy{30}else{15}));},Err(e)=>{b.capture_error=Some(e.clone());}}}let failed=result.is_err();let value=result.unwrap_or_else(|e|json!({"type":"capture-error","error":e.chars().take(500).collect::<String>()}));let _=output.send(Message::Text(value.to_string().into())).await;if failed{let _=output.send(close("Capture failed")).await;}});},
+        Some("capture")=>{let reject={let mut b=server.bridge.lock().unwrap();let action=msg["action"].as_str().unwrap_or("");let neutral=matches!(action,"heartbeat"|"delta");let reject=if b.capture_work{Some("Capture queue overflow: previous command is still pending")}else if b.peer.as_ref().and_then(|p|p.file.as_ref()).is_none_or(|file|msg["snapshot"]["fileKey"]!=*file)||(!neutral&&(b.pending.is_some()||b.cache_busy||server.read_busy.load(Ordering::SeqCst))){Some("Capture busy or file mismatch")}else{None};if reject.is_none(){b.capture_work=true;if action=="begin"{b.capture_busy=true;}b.expires=Some(Instant::now()+Duration::from_secs(if b.capture_busy{30}else{15}));}reject};if let Some(e)=reject{let _=socket.send(Message::Text(json!({"type":"capture-error","error":e}).to_string().into())).await;let _=socket.send(close("Capture failed")).await;code=1008;break;}let task=server.clone();let output=tx.clone();tokio::spawn(async move{let result={let _snapshot=if msg["action"]=="delta"{Some(task.snapshot_gate.lock().await)}else{None};task.engine.call(json!({"op":"capture","message":msg})).await};{let mut b=task.bridge.lock().unwrap();if b.peer.as_ref().is_none_or(|p|p.id!=id){return;}b.capture_work=false;match &result{Ok(r)=>{b.capture_busy=r["status"]!="ready";b.expires=Some(Instant::now()+Duration::from_secs(if b.capture_busy{30}else{15}));},Err(e)=>{b.capture_error=Some(e.clone());}}}let failed=result.is_err();let value=result.unwrap_or_else(|e|json!({"type":"capture-error","error":e.chars().take(500).collect::<String>()}));let _=output.send(Message::Text(value.to_string().into())).await;if failed{let _=output.send(close("Capture failed")).await;}});},
         Some("cache-control")=>{let action=msg["action"].as_str().unwrap_or("");if !matches!(action,"cache-info"|"cache-clear")||msg["id"].as_str().is_none_or(|s|s.is_empty()||s.len()>100||!s.bytes().all(|b|b.is_ascii_alphanumeric()||b==b'-'||b==b'_')){let _=socket.send(close("Invalid cache control")).await;code=1008;break;}let busy={let mut b=server.bridge.lock().unwrap();let busy=b.pending.is_some()||b.capture_busy||b.capture_work||b.cache_busy||server.read_busy.load(Ordering::SeqCst);if !busy{b.cache_busy=true;}busy};if busy{let _=socket.send(Message::Text(json!({"type":"cache-result","id":msg["id"],"error":"Кэш занят: дождись завершения текущего запроса."}).to_string().into())).await;}else{let task=server.clone();let output=tx.clone();tokio::spawn(async move{let result=task.engine.call(if msg["action"]=="cache-clear"{json!({"op":"clean","mode":"all"})}else{json!({"op":"info"})}).await;{let mut b=task.bridge.lock().unwrap();if b.peer.as_ref().is_none_or(|p|p.id!=id){return;}b.cache_busy=false;}let mut reply=json!({"type":"cache-result","id":msg["id"]});match result{Ok(v)=>reply["result"]=v,Err(e)=>reply["error"]=json!(e)}let _=output.send(Message::Text(reply.to_string().into())).await;});}},_=>{}}},
         Some(Ok(Message::Close(c)))=>{if let Some(c)=c{code=c.code.into();reason=c.reason.to_string();}else{code=1005;}let _=socket.flush().await;break;},Some(Ok(Message::Ping(_)))=>{let _=socket.flush().await;},Some(Ok(_))=>{},Some(Err(tokio_tungstenite::tungstenite::Error::Capacity(_)))=>{code=1009;let _=socket.send(Message::Close(Some(CloseFrame{code:CloseCode::Size,reason:"Message too large".into()}))).await;let tcp=socket.get_mut();let _=tcp.shutdown().await;let _=tokio::time::timeout(Duration::from_secs(1),async {let mut buffer=[0u8;16384];let mut bytes=0;while bytes<8*1024*1024{match tcp.read(&mut buffer).await{Ok(0)|Err(_)=>break,Ok(n)=>bytes+=n}}}).await;break;},_=>break
         }}
@@ -719,6 +727,7 @@ pub async fn run(
         asset: asset.to_string_lossy().into(),
         variables: config["variablesFile"].as_str().map(str::to_owned),
         read_busy: Arc::new(AtomicBool::new(false)),
+        snapshot_gate: Arc::new(tokio::sync::Mutex::new(())),
         export_busy: Arc::new(AtomicBool::new(false)),
         limit: Arc::new(Semaphore::new(8)),
     };

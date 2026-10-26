@@ -3,6 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createNetworkCollector, CAPTURE_LIMITS } from '../extension/network-collector.js';
 import { TRANSFER_PART_BYTES } from '../extension/network-transfer.js';
+import { withBackgroundRendering } from '../extension/background-render.js';
 const flush = async () => { for(let i=0;i<30;i++) await Promise.resolve(); };
 const deferred = () => { let resolve; const promise = new Promise(r => {resolve=r;}); return {promise,resolve}; };
 function fixture(options = {}) {
@@ -50,10 +51,42 @@ test('collector keeps only incoming selected-file messages including nested work
   assert.deepEqual(records.map(r=>r.session),['main','worker1','nested']);
   assert.equal(serialized.includes('private'),false);
   assert.ok(f.commands.some(c=>c.source.sessionId==='nested'&&c.method==='Network.enable'));
-  assert.deepEqual([...new Set(f.commands.map(c=>c.method))],['Network.enable','Page.enable','Target.setAutoAttach']);
+  assert.deepEqual([...new Set(f.commands.map(c=>c.method))],['Network.enable','Page.enable','Emulation.setFocusEmulationEnabled','Target.setAutoAttach']);
   assert.equal(f.collector.status.complete,false);assert.equal(f.finishes,0);
   await f.collector.stop();assert.equal(f.detaches.length,1);
   f.receive('late');await flush();assert.equal(f.parts.length,3);
+});
+
+test('capture keeps background activity across reload and exports until disconnect',async()=>{
+  let active=false;
+  const f=fixture({
+    command:(_source,method)=>{if(method==='Emulation.setFocusEmulationEnabled')active=true;},
+    reload:()=>assert.equal(active,true),
+    detach:()=>{active=false;},
+  });
+  await f.start(true);
+  for(const failed of [false,true]) {
+    const work=()=>withBackgroundRendering(f.chrome,7,f.collector.attachedTo(7),async()=>{
+      assert.equal(active,true);
+      if(failed)throw Error('export failed');
+    });
+    if(failed)await assert.rejects(work,/export failed/);else await work();
+    assert.equal(active,true);
+    assert.equal(f.collector.active,true);
+  }
+  assert.deepEqual(f.commands.filter(c=>c.method==='Emulation.setFocusEmulationEnabled'),[
+    {source:{tabId:7},method:'Emulation.setFocusEmulationEnabled',params:{enabled:true}},
+  ]);
+  await f.collector.stop();
+  assert.equal(active,false);
+});
+
+test('failed background activity setup releases debugger before reloading Figma',async()=>{
+  const f=fixture({command:(_source,method)=>{if(method==='Emulation.setFocusEmulationEnabled')throw Error('emulation failed');}});
+  await assert.rejects(f.start(true),/emulation failed/);
+  assert.deepEqual(f.reloads,[]);
+  assert.equal(f.detaches.length,1);
+  assert.equal(f.collector.active,false);
 });
 
 test('records stream across bounded parts and preserve escaped text',async()=>{

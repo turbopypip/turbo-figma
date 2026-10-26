@@ -93,6 +93,36 @@ test('server exposes native tool schemas and exports confined PNG/SVG assets',na
  }
 });
 
+for(const tool of ['get_screenshot','export_assets'])test(`${tool} overlaps snapshot reads and live updates without losing capture`,native,async t=>{
+ let release,started;
+ const gate=new Promise(r=>release=r),browserStarted=new Promise(r=>started=r);
+ t.after(()=>release());
+ const s=await setup(t,async(method,params)=>{started(params);await gate;return mockBrowser(method,params);});
+ const sender=await capture(s);t.after(()=>sender.cancel());
+ const read=name=>s.client.callTool({name,arguments:{...args,maxNodes:20}});
+ // Start preparation alongside competing cold reads, not after they finish.
+ const reads=Array.from({length:3},(_,i)=>read(i%2?'get_design_context':'get_design_map'));
+ const output=s.client.callTool({name:tool,arguments:tool==='get_screenshot'?{nodeId:'1:1'}:{nodeIds:['1:1'],format:'PNG'}});
+ const params=await browserStarted;
+ assert.ok(Array.isArray(params.ancestors),'export must prepare ancestors even while a reader is active');
+ for(const result of await Promise.all(reads))assert.equal(result.isError,undefined,JSON.stringify(result));
+ const status=await s.status();assert.equal(status.busy,true);assert.equal(status.readReady,true);assert.equal(status.nextAction,'read');
+ // Browser response is still held: both reads must finish independently.
+ const during=await Promise.all([read('get_design_map'),read('get_design_context'),sender.delta(bytes(message({type:'NODE_CHANGES',nodeChanges:[{guid:g(2),name:'Concurrent update'}]},4)))]);
+ for(const result of during.slice(0,2))assert.equal(result.isError,undefined,JSON.stringify(result));
+ assert.equal((await s.status()).connected,true);
+ const after=JSON.parse((await read('get_design_map')).content[0].text);
+ assert.equal(after.freshness.revision,1);
+ assert.equal(after.nodes.find(n=>n.id==='1:2').name,'Concurrent update');
+ // A second UI operation must not change the selection during the first.
+ const conflict=await s.client.callTool({name:'get_screenshot',arguments:{nodeId:'1:1'}});
+ assert.equal(conflict.isError,true);assert.match(conflict.content[0].text,/busy/i);
+ release();
+ const result=await output;assert.equal(result.isError,undefined,JSON.stringify(result));
+ if(tool==='get_screenshot')assert.ok(result.content.some(c=>c.type==='image'));
+ else assert.ok((await readdir(path.join(s.dir,'assets'))).some(f=>f.endsWith('.png')));
+});
+
 test('cache inventory recognizes new and pre-rename ownership markers',native,async t=>{
  const s=await setup(t),sender=await capture(s);t.after(()=>sender.cancel());
  const root=path.join(s.dir,'.cache/figma-network');

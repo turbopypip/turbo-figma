@@ -51,7 +51,13 @@ export function createNetworkCollector(chrome, { createSender = createCaptureSen
   async function enable(ctx, source) {
     if (ctx.closed) return;
     await chrome.debugger.sendCommand(source, 'Network.enable', {});
-    if (!source.sessionId) await chrome.debugger.sendCommand(source, 'Page.enable', {});
+    if (!source.sessionId) {
+      await chrome.debugger.sendCommand(source, 'Page.enable', {});
+      if (ctx.closed) return;
+      // Keep Figma active for the entire capture, including time spent on other
+      // tabs. Detaching our debugger releases this override when capture stops.
+      await chrome.debugger.sendCommand(source, 'Emulation.setFocusEmulationEnabled', { enabled: true });
+    }
     if (ctx.closed) return;
     await chrome.debugger.sendCommand(source, 'Target.setAutoAttach', {
       autoAttach: true, waitForDebuggerOnStart: ctx.reload, flatten: true,
