@@ -90,8 +90,31 @@ try {
     if (-not $cpp) { throw 'Install the Desktop development with C++ workload in Visual Studio Installer, then rerun.' }
     # Import the compiler and Windows SDK environment into this process only.
     $devCmd = Join-Path $cpp 'Common7\Tools\VsDevCmd.bat'
-    $devEnvironment = & $env:ComSpec /d /s /c "`"`"$devCmd`" -no_logo -arch=x64 -host_arch=x64 && set`""
-    if ($LASTEXITCODE -ne 0) { throw 'Could not initialize the Visual C++ build environment.' }
+    if (-not (Test-Path -LiteralPath $devCmd)) { throw "Visual C++ environment script not found: $devCmd" }
+    # Pass cmd.exe its raw command line. Windows PowerShell 5.1 rewrites the
+    # nested quotes when invoking it with &, breaking paths under Program Files.
+    $compilerProcess = New-Object System.Diagnostics.Process
+    try {
+        $compilerProcess.StartInfo.FileName = $env:ComSpec
+        $compilerProcess.StartInfo.Arguments = '/d /s /c ""{0}" -no_logo -arch=x64 -host_arch=x64 && set"' -f $devCmd
+        $compilerProcess.StartInfo.UseShellExecute = $false
+        $compilerProcess.StartInfo.CreateNoWindow = $true
+        $compilerProcess.StartInfo.RedirectStandardOutput = $true
+        $compilerProcess.StartInfo.RedirectStandardError = $true
+        if (-not $compilerProcess.Start()) { throw 'Could not start cmd.exe for Visual C++ setup.' }
+        # Drain both pipes concurrently so installer diagnostics cannot block it.
+        $outputTask = $compilerProcess.StandardOutput.ReadToEndAsync()
+        $errorTask = $compilerProcess.StandardError.ReadToEndAsync()
+        $compilerProcess.WaitForExit()
+        $devOutput = $outputTask.GetAwaiter().GetResult()
+        $devError = $errorTask.GetAwaiter().GetResult()
+        if ($compilerProcess.ExitCode -ne 0) {
+            throw "Could not initialize the Visual C++ build environment (exit $($compilerProcess.ExitCode)). $devError"
+        }
+        $devEnvironment = $devOutput -split '\r?\n'
+    } finally {
+        $compilerProcess.Dispose()
+    }
     foreach ($line in $devEnvironment) {
         if ($line -match '^([^=]+)=(.*)$') { [Environment]::SetEnvironmentVariable($Matches[1], $Matches[2], 'Process') }
     }
