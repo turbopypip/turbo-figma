@@ -1,5 +1,5 @@
 //! Bounded filesystem operations for the managed store. No recursive deletion.
-use crate::stage6::bounded;
+use crate::input::bounded;
 use base64::{engine::general_purpose::STANDARD, Engine};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -206,7 +206,7 @@ fn inventory(root: &Path) -> Result<(Vec<Value>, usize)> {
             stamp(&dir)?;
             let owner: Value = serde_json::from_slice(&bounded(&dir.join("capture.json"), 4096)?)?;
             if !exact(&owner, &["owner", "version", "snapshot"], &["frame"])
-                || owner["owner"] != "figma-kilo-mcp"
+                || (owner["owner"] != "turbo-figma" && owner["owner"] != "figma-kilo-mcp")
                 || owner["version"] != 1
                 || key(&owner["snapshot"], owner.get("frame"))? != name
             {
@@ -416,7 +416,7 @@ pub fn command(q: &Value) -> Result<Value> {
     if op == "begin" {
         mkdir(&dir)?;
         let s = stamp(&dir)?;
-        let mut owner = json!({"owner":"figma-kilo-mcp","version":1,"snapshot":id});
+        let mut owner = json!({"owner":"turbo-figma","version":1,"snapshot":id});
         if let Some(f) = frame {
             owner["frame"] = f.clone();
         }

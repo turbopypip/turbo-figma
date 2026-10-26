@@ -164,7 +164,7 @@ impl Server {
         let id = crate::engine::random().map_err(|e| e.to_string())?;
         let peer = {
             let mut b = self.bridge.lock().unwrap();
-            let p=b.peer.clone().ok_or("Figma browser extension is not connected. Open the file in Chrome, click Figma Kilo Browser Bridge and pair it using the local secret.")?;
+            let p=b.peer.clone().ok_or("Figma browser extension is not connected. Open the file in Chrome, click turbo-figma and pair it using the local secret.")?;
             if b.pending.is_some() || b.cache_busy || b.capture_busy || b.capture_work {
                 return Err("Figma is busy. Wait for the current request.".into());
             }
@@ -656,7 +656,7 @@ pub async fn run(
     #[cfg(windows)]
     crate::platform::install_shutdown_handler(&STOP)?;
     let config: Value =
-        serde_json::from_slice(&crate::stage6::bounded(Path::new(config_path), 65536)?)?;
+        serde_json::from_slice(&crate::input::bounded(Path::new(config_path), 65536)?)?;
     let secret = config["secret"]
         .as_str()
         .filter(|s| (32..=256).contains(&s.encode_utf16().count()))
@@ -723,7 +723,7 @@ pub async fn run(
             });
         }
     });
-    eprintln!("MCP stdio backend: rust (standalone)");
+    eprintln!("turbo-figma MCP server (Rust)");
     eprintln!(
         "Figma bridge listening on ws://127.0.0.1:{port}. Pair the browser adapter. Assets: {}",
         asset.display()

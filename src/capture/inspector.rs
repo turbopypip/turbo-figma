@@ -1,4 +1,4 @@
-use crate::{disk::Result, instances::array, stage6, stage8::value, wire::Decoder};
+use crate::{disk::Result, instances::array, input, wire_value::value, wire::Decoder};
 use base64::{engine::general_purpose::STANDARD, Engine};
 use serde_json::{json, Value};
 use std::collections::HashSet;
@@ -60,7 +60,7 @@ impl Inspector {
                 {
                     return Err("Unsupported or repeated wire schema".into());
                 }
-                self.schema = stage6::inflate(&binary[12..], 2 * 1024 * 1024)?;
+                self.schema = input::inflate(&binary[12..], 2 * 1024 * 1024)?;
                 self.codec = Some(Decoder::new(
                     &self.schema,
                     &HashSet::from(["phase".into()]),
@@ -72,7 +72,7 @@ impl Inspector {
                     .ok_or("Initial schema missing: reload Figma and capture again")?;
                 let before = self.nodes;
                 let message = value(codec.decode(
-                    &stage6::inflate(&binary, 64 * 1024 * 1024)?,
+                    &input::inflate(&binary, 64 * 1024 * 1024)?,
                     &mut |n| {
                         if !self.started || self.ended || value(n)["phase"] != "CREATED" {
                             return Err("Invalid initial node batch".into());
@@ -123,7 +123,7 @@ impl Inspector {
         }
         let mut nodes = 0;
         let message = value(self.codec.as_ref().unwrap().decode_service(
-            &stage6::inflate(&binary, 1024 * 1024)?,
+            &input::inflate(&binary, 1024 * 1024)?,
             sent,
             &mut |_| {
                 nodes += 1;

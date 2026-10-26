@@ -1,12 +1,12 @@
 {
   "mcp": {
-    "figma": {
+    "turbo-figma": {
       "type": "local",
       "command": [
-        "C:/tools/figma-kilo-mcp/rust/helper/target/release/figma-rust-helper.exe",
+        "C:/tools/turbo-figma/target/release/turbo-figma.exe",
         "--server",
-        "C:/tools/figma-kilo-mcp/.local/config.json",
-        "C:/tools/figma-kilo-mcp"
+        "C:/tools/turbo-figma/.local/config.json",
+        "C:/tools/turbo-figma"
       ],
       "enabled": true,
       "timeout": 60000

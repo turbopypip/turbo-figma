@@ -72,7 +72,7 @@ export function createConnection(chrome, { WebSocket = globalThis.WebSocket, tim
     const tab = await chrome.tabs.get(tabId);
     await chrome.windows.update(tab.windowId, { focused: true });
     await chrome.tabs.update(tabId, { active: true });
-    const marker = `figma-kilo-export:${crypto.randomUUID()}`;
+    const marker = `turbo-figma-export:${crypto.randomUUID()}`;
     const format = method === 'get_screenshot' ? 'PNG' : params.format;
     if (format === 'SVG') {
       const node = await invoke('prepare_svg', params);
@@ -202,7 +202,7 @@ export function createConnection(chrome, { WebSocket = globalThis.WebSocket, tim
         connectionState('connected');
         const saved = { ...credentials };
         void persist(() => chrome.storage.local.set({ pairing: saved })).catch(() => {});
-        setStatus('Подключено к Kilo CLI. Ключ сохранён в этом браузере. Панель можно закрыть.');
+        setStatus('Подключено к turbo-figma MCP. Ключ сохранён в этом браузере. Панель можно закрыть.');
         return;
       }
       if (msg.type !== 'request' || typeof msg.id !== 'string' || msg.id.length > 100) return;

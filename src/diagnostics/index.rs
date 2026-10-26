@@ -1,8 +1,9 @@
-//! Experimental one-job boundary: decode/index in Rust, bounded query pages out.
+//! Diagnostic index construction and bounded query commands.
 use crate::{
     disk::{Disk, Result},
-    stage6,
-    wire::{Decoder, Value as Wire},
+    input,
+    wire::Decoder,
+    wire_value::value,
 };
 use base64::Engine;
 use serde_json::{json, Value};
@@ -13,24 +14,6 @@ use std::{
     path::Path,
     time::Instant,
 };
-pub fn value(w: Wire) -> Value {
-    match w {
-        Wire::Null => Value::Null,
-        Wire::Bool(v) => v.into(),
-        Wire::String(v) => v.into(),
-        Wire::Num(v) => {
-            if !v.is_finite() {
-                Value::Null
-            } else if v.fract() == 0. && v.abs() <= 9007199254740991. {
-                (v as i64).into()
-            } else {
-                json!(v)
-            }
-        }
-        Wire::Array(a) => a.into_iter().map(value).collect(),
-        Wire::Object(a) => Value::Object(a.into_iter().map(|(k, v)| (k, value(v))).collect()),
-    }
-}
 fn packet(w: &mut impl Write, v: &Value) -> Result<()> {
     let b = serde_json::to_vec(v)?;
     if b.len() > 4 * 1024 * 1024 {
@@ -41,7 +24,7 @@ fn packet(w: &mut impl Write, v: &Value) -> Result<()> {
     Ok(())
 }
 pub fn run(mode: &str, config: Option<&str>) -> Result<()> {
-    let c: Value = serde_json::from_slice(&stage6::bounded(
+    let c: Value = serde_json::from_slice(&input::bounded(
         Path::new(config.ok_or("Config required")?),
         65536,
     )?)?;
@@ -61,7 +44,7 @@ pub fn run(mode: &str, config: Option<&str>) -> Result<()> {
     let mut index_ms = 0.;
     if mode == "managed" || runtime {
         let mut codec = None;
-        stage6::input(
+        input::input(
             Path::new(c["directory"].as_str().ok_or("Directory required")?),
             &c["snapshot"],
             |b| {
@@ -69,14 +52,14 @@ pub fn run(mode: &str, config: Option<&str>) -> Result<()> {
                     if codec.is_some() || b.len() < 12 || b[8..12] != 1_u32.to_le_bytes() {
                         return Err("Unsupported or repeated fig-wire schema".into());
                     }
-                    let schema = stage6::inflate(&b[12..], 2 * 1024 * 1024)?;
+                    let schema = input::inflate(&b[12..], 2 * 1024 * 1024)?;
                     codec = Some(Decoder::new(&schema, &fields)?);
                     if runtime {
                         wire_schema = schema;
                     }
                 } else {
                     let d = codec.as_ref().ok_or("Missing wire schema")?;
-                    let bytes = stage6::inflate(b, stage6::FRAME)?;
+                    let bytes = input::inflate(b, input::FRAME)?;
                     let m = d.decode(&bytes, &mut |n| {
                         let t = Instant::now();
                         disk.accept(value(n))?;
@@ -114,7 +97,7 @@ pub fn run(mode: &str, config: Option<&str>) -> Result<()> {
             index_ms += t.elapsed().as_secs_f64() * 1000.;
         }
     } else {
-        return Err("Unknown stage8 operation".into());
+        return Err("Unknown index operation".into());
     }
     disk.finish()?;
     let load_ms = start.elapsed().as_secs_f64() * 1000.;
@@ -154,7 +137,7 @@ pub fn run(mode: &str, config: Option<&str>) -> Result<()> {
                     if bytes.is_empty() {
                         return Err("Invalid live base64".into());
                     }
-                    let bytes = stage6::inflate(&bytes, 1024 * 1024)?;
+                    let bytes = input::inflate(&bytes, 1024 * 1024)?;
                     let mut changes = Vec::new();
                     let message = live_codec.decode_strict(&bytes, &mut |n| {
                         if changes.len() >= 256 {
@@ -216,7 +199,7 @@ pub fn run(mode: &str, config: Option<&str>) -> Result<()> {
         };
         packet(
             &mut out,
-            &json!({"kind":"reply","reply":reply,"ms":t.elapsed().as_secs_f64()*1000.,"stats":disk.stats(),"metrics":stage6::metrics()}),
+            &json!({"kind":"reply","reply":reply,"ms":t.elapsed().as_secs_f64()*1000.,"stats":disk.stats(),"metrics":input::metrics()}),
         )?;
     }
     out.flush()?;

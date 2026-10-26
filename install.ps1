@@ -122,7 +122,7 @@ try {
     Invoke-Checked 'rustup.exe' @('run', $toolchain, 'rustc', '--version')
     Invoke-Checked 'npm.cmd' @('ci')
     Invoke-Checked 'npm.cmd' @('run', 'build')
-    $binary = Join-Path $repoRoot 'rust\helper\target\release\figma-rust-helper.exe'
+    $binary = Join-Path $repoRoot 'target\release\turbo-figma.exe'
     if (-not (Test-Path $binary)) { throw "Build did not produce $binary" }
     if (-not $Assets) {
         $configPath = Join-Path $repoRoot '.local\config.json'

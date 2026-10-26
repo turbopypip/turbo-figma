@@ -2,7 +2,7 @@
 // button, including a detached <a download>. Does not inspect Figma's runtime.
 export function installDownloadCapture(marker, fileKey) {
   if (location.origin !== 'https://www.figma.com' || location.pathname.split('/')[2] !== fileKey) throw new Error('Paired file changed');
-  const key = '__figmaKiloNativeDownload';
+  const key = '__turboFigmaNativeDownload';
   globalThis[key]?.dispose();
   const prototype = HTMLAnchorElement.prototype;
   const original = prototype.click;
@@ -89,7 +89,7 @@ export function installDownloadCapture(marker, fileKey) {
 }
 
 export function readDownloadCapture(marker, fileKey, dispose = false) {
-  const state = globalThis.__figmaKiloNativeDownload;
+  const state = globalThis.__turboFigmaNativeDownload;
   if (!state || state.marker !== marker) return { error: 'Native export capture expired' };
   if (dispose) { state.dispose(); return null; }
   if (location.origin !== 'https://www.figma.com' || location.pathname.split('/')[2] !== fileKey) {

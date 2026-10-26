@@ -1,7 +1,7 @@
 # Dependencies, build output and local runtime data
 node_modules/
 /dist/
-/rust/helper/target/
+/target/
 /.local/
 /.cache/
 /artifacts/

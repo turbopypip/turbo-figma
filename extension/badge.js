@@ -15,7 +15,7 @@ export function createStatusBadge(chrome) {
     work = work.catch(() => {}).then(async () => {
       await chrome.action.setBadgeBackgroundColor({ color: value.color });
       await chrome.action.setBadgeText({ text: value.text });
-      await chrome.action.setTitle({ title: `Figma ↔ Kilo CLI: ${value.title}` });
+      await chrome.action.setTitle({ title: `turbo-figma: ${value.title}` });
     });
     work.catch(() => {});
     return work;

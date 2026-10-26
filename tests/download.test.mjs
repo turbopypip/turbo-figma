@@ -26,7 +26,7 @@ for (const zipped of [false, true]) test(`native export captures ${zipped ? 'ZIP
     svg.click(); assert.equal(clicks, 2); assert.equal(fetched, 1);
     assert.equal(Anchor.prototype.click, original);
     assert.match(read('other', 'file').error, /expired/);
-    for (let i = 0; i < 100 && !context.__figmaKiloNativeDownload?.result && !context.__figmaKiloNativeDownload?.error; i++) await new Promise(resolve => setTimeout(resolve, 10));
+    for (let i = 0; i < 100 && !context.__turboFigmaNativeDownload?.result && !context.__turboFigmaNativeDownload?.error; i++) await new Promise(resolve => setTimeout(resolve, 10));
     const result = read('request', 'file');
     assert.match(Buffer.from(result.data, 'base64').toString(), /<svg/);
     assert.equal(listeners.size, 0);

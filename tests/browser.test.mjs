@@ -41,7 +41,7 @@ function browserFixture({ url = 'https://www.figma.com/design/test/File', select
       throw new Error(`Unexpected DOM query ${selector}`);
     },
   };
-  const context = { PointerEvent: class { constructor(type) { this.type = type; } }, MouseEvent: class { constructor(type) { this.type = type; } }, URL, location: { href: url }, document, setTimeout, TextEncoder, DataView, __figmaKiloExport: capture,
+  const context = { PointerEvent: class { constructor(type) { this.type = type; } }, MouseEvent: class { constructor(type) { this.type = type; } }, URL, location: { href: url }, document, setTimeout, TextEncoder, DataView, __turboFigmaExport: capture,
     btoa: value => Buffer.from(value, 'binary').toString('base64'),
     navigator: { clipboard: { readText: async () => { calls.read++; return clipboard; }, writeText: async () => { calls.write++; } } } };
   const action = vm.runInNewContext(`(${figmaAction.toString()})`, context);

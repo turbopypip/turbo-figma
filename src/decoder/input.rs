@@ -1,4 +1,4 @@
-//! Isolated stage-06 prototype. Never called by the production MCP.
+//! Bounded snapshot input, integrity checks and Zstandard decompression.
 use crate::frame;
 use base64::{engine::general_purpose::STANDARD, Engine};
 use serde_json::{json, Value};
@@ -266,7 +266,7 @@ pub fn run(mode: &str, config: Option<&str>) -> Result<()> {
     }
     require(
         mode == "input-bench" || mode == "inflate-bench",
-        "Unknown stage6 operation",
+        "Unknown input operation",
     )?;
     let warm = config["warmup"].as_u64().unwrap_or(0);
     let runs = config["runs"].as_u64().unwrap_or(1);

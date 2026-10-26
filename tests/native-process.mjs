@@ -1,12 +1,12 @@
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-export const defaultBinary = fileURLToPath(new URL(`../rust/helper/target/release/figma-rust-helper${process.platform === 'win32' ? '.exe' : ''}`, import.meta.url));
+export const defaultBinary = fileURLToPath(new URL(`../target/release/turbo-figma${process.platform === 'win32' ? '.exe' : ''}`, import.meta.url));
 const LIMIT = 65536;
 const failure = (code, message = code) => Object.assign(new Error(message), { code });
 
 // Resolve/reject only after close: the direct child has exited and its pipes closed.
-export function callHelper({ binary = defaultBinary, operation = 'ping', argument = '', version = 1, timeoutMs = 2000, signal } = {}) {
+export function callDiagnostic({ binary = defaultBinary, operation = 'ping', argument = '', version = 1, timeoutMs = 2000, signal } = {}) {
   if (signal?.aborted) return Promise.reject(failure('ABORTED'));
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0 || timeoutMs > 60000) return Promise.reject(failure('INVALID_TIMEOUT'));
   const fields = [String(version), '1', operation, argument];
@@ -14,7 +14,7 @@ export function callHelper({ binary = defaultBinary, operation = 'ping', argumen
   const frame = `${fields.join('\t')}\n`;
   if (Buffer.byteLength(frame) > LIMIT) return Promise.reject(failure('INVALID_FRAME'));
   return new Promise((resolve, reject) => {
-    const child = spawn(binary, [], { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
+    const child = spawn(binary, ['--diagnostics'], { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
     let error;
     let output = Buffer.alloc(0);
     let stderrBytes = 0;
@@ -40,7 +40,7 @@ export function callHelper({ binary = defaultBinary, operation = 'ping', argumen
       clearTimeout(timer);
       signal?.removeEventListener('abort', abort);
       if (error) return reject(Object.assign(error, { pid: child.pid }));
-      if (code !== 0) return reject(failure('HELPER_EXIT', `Helper exited: ${code ?? exitSignal}`));
+      if (code !== 0) return reject(failure('PROCESS_EXIT', `Process exited: ${code ?? exitSignal}`));
       const response = output.toString('utf8');
       const match = /^1\t([01])\t(ok|error)\t([A-Za-z_]+)\n$/.exec(response);
       if (!match || (match[1] !== '1' && match[2] === 'ok')) return reject(failure('PROTOCOL_ERROR'));

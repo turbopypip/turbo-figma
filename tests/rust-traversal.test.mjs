@@ -6,10 +6,10 @@ import path from 'node:path';
 import {spawn} from 'node:child_process';
 const golden=JSON.parse(await readFile(new URL('./fixtures/traversal.json',import.meta.url),'utf8'));
 let goldenIndex=0;
-const nodeFields=JSON.parse(await readFile(new URL('../rust/helper/resources/fields.json',import.meta.url),'utf8'));
+const nodeFields=JSON.parse(await readFile(new URL('../resources/fields.json',import.meta.url),'utf8'));
 import {rustBinary} from './native-server.mjs';
-const native={skip:existsSync(rustBinary)?false:'Release helper not built'};
-if(process.env.REQUIRE_RUST_HELPER&&!existsSync(rustBinary))throw Error('Release helper required');
+const native={skip:existsSync(rustBinary)?false:'Release binary not built'};
+if(process.env.REQUIRE_TURBO_FIGMA&&!existsSync(rustBinary))throw Error('Release binary required');
 const g=n=>({sessionID:1,localID:n});
 const n=(id,parent,extra)=>({guid:g(id),phase:'CREATED',...(parent?{parentIndex:{guid:g(parent),position:String(id).padStart(4,'0')}}:{}),...extra});
 const patch=(ids,extra)=>({guidPath:{guids:ids.map(g)},...extra});
@@ -28,7 +28,7 @@ async function compare(nodes,queries) {
   const frames=records.map(v=>{const b=Buffer.from(JSON.stringify(v)),h=Buffer.alloc(4);h.writeUInt32LE(b.length);return Buffer.concat([h,b]);});await writeFile(path.join(dir,'model'),Buffer.concat(frames));
   const base={depth:50,maxNodes:500,offset:0,includeHidden:false,format:'debug'};const qs=queries.map(q=>({...base,...q}));
   await writeFile(path.join(dir,'config'),JSON.stringify({model:path.join(dir,'model'),scratch,fields:[...nodeFields],commands:qs.map(q=>({...q,op:'contextQuery',id:q.id??'1:1',fileKey:'test'}))}));
-  const output=await new Promise((resolve,reject)=>{const child=spawn(rustBinary,['--stage8','model',path.join(dir,'config')]);const chunks=[];let stderr='';child.stdout.on('data',b=>chunks.push(b));child.stderr.on('data',b=>stderr+=b);child.on('error',reject);child.on('close',(code,signal)=>code!==0?reject(Error(signal+': '+stderr)):resolve(Buffer.concat(chunks)));});
+  const output=await new Promise((resolve,reject)=>{const child=spawn(rustBinary,['--inspect-index','model',path.join(dir,'config')]);const chunks=[];let stderr='';child.stdout.on('data',b=>chunks.push(b));child.stderr.on('data',b=>stderr+=b);child.on('error',reject);child.on('close',(code,signal)=>code!==0?reject(Error(signal+': '+stderr)):resolve(Buffer.concat(chunks)));});
   const replies=[];for(let i=0;i<output.length;){const size=output.readUInt32LE(i);i+=4;replies.push(JSON.parse(output.subarray(i,i+size)));i+=size;}
   assert.equal(replies.length,qs.length+1,JSON.stringify(replies.map(r=>({kind:r.kind,error:r.reply?.error}))));
   for(const [i,q] of qs.entries()){const result=replies[i+1].reply;const expected=golden[goldenIndex++];assert.ok(expected);assert.equal(result.error,expected.error,JSON.stringify(q));if(!expected.error)assert.deepEqual(result.result,expected.result,JSON.stringify(q));}

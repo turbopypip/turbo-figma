@@ -101,7 +101,7 @@ test('popup close only stops UI refresh; information goes directly to README',as
     setInterval:()=>1,clearInterval:()=>{cleared=true;},
     chrome:{tabs:{query:async()=>[{id:7,url:'https://www.figma.com/design/test/name'}]},storage:{onChanged:{addListener(){},removeListener(){}},local:{get:async()=>({})}},runtime:{sendMessage:async msg=>{sent.push(msg);return {state:'connected',message:'Подключено'};}}}});
   await flush();assert.equal(elements['secret-field'].hidden,false);assert.equal(elements.secret.required,true);close();assert.equal(cleared,true);assert.deepEqual(sent.map(m=>m.action),['status']);
-  assert.match(html,/href="https:\/\/github.com\/turbopypip\/figma-kilo-mcp#readme" target="_blank"/);
+  assert.match(html,/href="https:\/\/github.com\/turbopypip\/turbo-figma#readme" target="_blank"/);
 });
 test('one secret entry pairs different Figma tabs and files, including after browser restart', async()=>{
   const {WebSocket}=await import('ws');

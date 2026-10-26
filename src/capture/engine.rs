@@ -3,8 +3,8 @@ use crate::{
     disk::{Disk, Result},
     inspector::Inspector,
     instances::array,
-    stage6,
-    stage8::value,
+    input,
+    wire_value::value,
     store, uikit,
     wire::Decoder,
 };
@@ -110,7 +110,7 @@ impl Engine {
         }
         let stamps = json!([[cache, store::stamp(&cache)?], [root, store::stamp(&root)?]]);
         let secret = random()?.into_bytes();
-        let fields = serde_json::from_str::<Vec<String>>(include_str!("../resources/fields.json"))?
+        let fields = serde_json::from_str::<Vec<String>>(include_str!("../../resources/fields.json"))?
             .into_iter()
             .collect();
         let engine = Self {
@@ -405,7 +405,7 @@ impl Engine {
                         if r.applied >= 128 {
                             return Err("Live batch limit exceeded".into());
                         }
-                        let binary = stage6::inflate(&STANDARD.decode(payload)?, 1024 * 1024)?;
+                        let binary = input::inflate(&STANDARD.decode(payload)?, 1024 * 1024)?;
                         let mut changes = vec![];
                         let message = value(r.codec.decode_strict(&binary, &mut |n| {
                             if changes.len() >= 256 {
@@ -503,17 +503,17 @@ impl Engine {
             let mut codec = None;
             let mut schema = vec![];
             let directory = self.root.join(store::key(snapshot, None)?);
-            stage6::input(&directory, snapshot, |b| {
+            input::input(&directory, snapshot, |b| {
                 cancelled(cancel)?;
                 if b.starts_with(b"fig-wire") {
                     if codec.is_some() || b.len() < 12 || b[8..12] != 1u32.to_le_bytes() {
                         return Err("Unsupported or repeated fig-wire schema".into());
                     }
-                    schema = stage6::inflate(&b[12..], 2 * 1024 * 1024)?;
+                    schema = input::inflate(&b[12..], 2 * 1024 * 1024)?;
                     codec = Some(Decoder::new(&schema, &self.fields)?);
                 } else {
                     let d = codec.as_ref().ok_or("Missing wire schema")?;
-                    let message = d.decode(&stage6::inflate(b, stage6::FRAME)?, &mut |n| {
+                    let message = d.decode(&input::inflate(b, input::FRAME)?, &mut |n| {
                         cancelled(cancel)?;
                         disk.accept(value(n))
                     })?;

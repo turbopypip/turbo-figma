@@ -18,11 +18,11 @@ jobs:
       - run: npm run check
       - run: npm test
         env:
-          REQUIRE_RUST_HELPER: '1'
+          REQUIRE_TURBO_FIGMA: '1'
       - uses: actions/upload-artifact@v4
         with:
-          name: figma-rust-${{ runner.os }}-${{ runner.arch }}
+          name: turbo-figma-${{ runner.os }}-${{ runner.arch }}
           path: |
-            rust/helper/target/release/figma-rust-helper
-            rust/helper/target/release/figma-rust-helper.exe
+            target/release/turbo-figma
+            target/release/turbo-figma.exe
           if-no-files-found: error

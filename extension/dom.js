@@ -72,8 +72,8 @@ export async function figmaAction(method, params, fileKey) {
       return null;
     };
     // Only offsets/IDs, never Figma private state. Cache is bounded and file scoped.
-    let cache = globalThis.__figmaKiloLayerOffsets;
-    if (!cache || cache.fileKey !== fileKey) cache = globalThis.__figmaKiloLayerOffsets = { fileKey, offsets: new Map() };
+    let cache = globalThis.__turboFigmaLayerOffsets;
+    if (!cache || cache.fileKey !== fileKey) cache = globalThis.__turboFigmaLayerOffsets = { fileKey, offsets: new Map() };
     const remember = row => {
       const id = describe(row).id;
       cache.offsets.delete(id); cache.offsets.set(id, scroller()?.scrollTop || 0);

@@ -903,7 +903,7 @@ mod tests {
     fn disk_integrity_and_join_contract() {
         let base = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../.cache/figma-network");
         std::fs::create_dir_all(&base).unwrap();
-        let dir = base.join(format!("stage8-unit-{}", std::process::id()));
+        let dir = base.join(format!("index-unit-{}", std::process::id()));
         std::fs::create_dir(&dir).unwrap();
         {
             let fields = ["guid", "phase", "parentIndex", "type"]

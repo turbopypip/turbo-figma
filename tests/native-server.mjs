@@ -7,7 +7,7 @@ import os from 'node:os';
 import net from 'node:net';
 import {Client} from '@modelcontextprotocol/client';
 import {StdioClientTransport} from '@modelcontextprotocol/client/stdio';
-export const rustBinary=process.env.FIGMA_RUST_BINARY ?? fileURLToPath(new URL(`../rust/helper/target/release/figma-rust-helper${process.platform==='win32'?'.exe':''}`,import.meta.url));
+export const rustBinary=process.env.TURBO_FIGMA_BINARY ?? fileURLToPath(new URL(`../target/release/turbo-figma${process.platform==='win32'?'.exe':''}`,import.meta.url));
 if(!existsSync(rustBinary)) throw Error('Rust binary required: run npm run build');
 export async function createNativeServer(secret='s'.repeat(64),port=0){
   if(!port){const probe=net.createServer();await new Promise((resolve,reject)=>{probe.once('error',reject);probe.listen(0,'127.0.0.1',resolve);});port=probe.address().port;await new Promise(resolve=>probe.close(resolve));}
