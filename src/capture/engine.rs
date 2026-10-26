@@ -1,12 +1,12 @@
 //! Native capture ownership, retained-reader lifecycle and authenticated pagination.
 use crate::{
     disk::{Disk, Result},
+    input,
     inspector::Inspector,
     instances::array,
-    input,
-    wire_value::value,
     store, uikit,
     wire::Decoder,
+    wire_value::value,
 };
 use base64::{
     engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD},
@@ -110,9 +110,10 @@ impl Engine {
         }
         let stamps = json!([[cache, store::stamp(&cache)?], [root, store::stamp(&root)?]]);
         let secret = random()?.into_bytes();
-        let fields = serde_json::from_str::<Vec<String>>(include_str!("../../resources/fields.json"))?
-            .into_iter()
-            .collect();
+        let fields =
+            serde_json::from_str::<Vec<String>>(include_str!("../../resources/fields.json"))?
+                .into_iter()
+                .collect();
         let engine = Self {
             lease: Arc::new(Mutex::new(None)),
             root,
@@ -203,10 +204,11 @@ impl Engine {
             "read" => {
                 let result = self.read(&q["query"], cancel);
                 if result.is_err()
-                    && result
-                        .as_ref()
-                        .err()
-                        .is_none_or(|e| !e.to_string().starts_with("Invalid or stale continuation"))
+                    && result.as_ref().err().is_none_or(|e| {
+                        let m = e.to_string();
+                        !m.starts_with("Invalid or stale continuation")
+                            && !m.starts_with("STALE: requested")
+                    })
                 {
                     self.release();
                 }
@@ -553,6 +555,18 @@ impl Engine {
         let snapshot = self.snapshot(file)?;
         let c = self.capture.as_ref().unwrap();
         let revision = c.document_revision;
+        let capture_identity = hash(&json!([snapshot, c.stamp]))?;
+        let observation = hash(&json!(self.mac(&capture_identity)))?;
+        if q.get("observation")
+            .is_some_and(|v| v.as_str() != Some(observation.as_str()))
+        {
+            return Err("STALE: requested observation changed; refresh the branch map".into());
+        }
+        if q.get("revision")
+            .is_some_and(|v| v.as_u64() != Some(revision))
+        {
+            return Err("STALE: requested revision changed; refresh the branch map".into());
+        }
         let manifest = self.store(json!({"op":"manifest","snapshot":snapshot}))?;
         let max_bytes = q["maxBytes"]
             .as_u64()
@@ -570,7 +584,10 @@ impl Engine {
             max_bytes,
             q["includeHidden"],
             q["variablesFile"],
-            fingerprint
+            fingerprint,
+            q["view"],
+            q["fields"],
+            q["nodeIds"]
         ]))?;
         let offset = if let Some(token) = q["continuation"].as_str() {
             self.offset(token, &binding)?
@@ -593,6 +610,7 @@ impl Engine {
         params["schema"] = json!(r.schema);
         params["applied"] = json!(r.applied);
         params["format"] = json!("context");
+        params["compact"] = json!(true);
         let mut result = r.disk.context_query(&params)?;
         r.query = params;
         r.last = Instant::now();
@@ -602,6 +620,7 @@ impl Engine {
         o.remove("documentRecords");
         o.remove("initialBatches");
         result["node"] = json!({"id":q["id"]});
+        result["observation"] = json!(observation);
         result["snapshot"] = snapshot.clone();
         result["captureWarnings"] = json!([]);
         result["freshness"] = json!({"status":"observed","snapshot":snapshot,"revision":revision,"message":"Observed capture with supported updates; unsupported traffic requires recapture."});
@@ -616,6 +635,18 @@ impl Engine {
         if let Some(f) = fingerprint {
             result["variableMatching"]["fingerprint"] = json!(f);
         }
+        for node in result["nodes"].as_array_mut().unwrap() {
+            crate::context::compact(node);
+        }
+        result["view"] = q.get("view").cloned().unwrap_or(json!("context"));
+        result["fields"] = if q["view"] == "map" {
+            json!(["identity", "geometry"])
+        } else {
+            q.get("fields")
+                .cloned()
+                .unwrap_or(json!(["layout", "style", "text", "component"]))
+        };
+        result["semantics"] = json!("Snapshot values; layout.css combines layout and visual CSS. sizing.measured is not a fixed size for hug/fill. layout.source contains normalized design values, not UI observations. unresolved entries without reason mean unverified snapshot values. Styles retain source precision; unsupported CSS stays explicit. UI-kit matches are value matches, not native bindings; resolvedValues retains original literals only for substituted CSS properties. Map/field projections intentionally omit other fields.");
         loop {
             let len = array(&result["nodes"]).len();
             let next = offset + len as u64;
@@ -639,9 +670,13 @@ impl Engine {
                 .unwrap_or(0)
                 > 0;
             result["childrenTruncated"] = json!(children);
-            result["traversal"]["complete"] = json!(!children && !unresolved);
+            let missing = result["traversal"]["missingNodeIds"]
+                .as_array()
+                .is_some_and(|a| !a.is_empty());
+            result["traversal"]["complete"] = json!(!children && !unresolved && !missing);
             result["truncated"] = json!(
                 children
+                    || missing
                     || unresolved
                     || array(&result["nodes"])
                         .iter()
@@ -807,7 +842,8 @@ mod tests {
         assert!(!handle.observed(None));
         handle.lease.lock().unwrap().as_mut().unwrap().expires = Instant::now();
         assert!(!handle.observed(Some("test")));
-        handle.lease.lock().unwrap().as_mut().unwrap().expires = Instant::now() + Duration::from_secs(15);
+        handle.lease.lock().unwrap().as_mut().unwrap().expires =
+            Instant::now() + Duration::from_secs(15);
         let mut forged = q;
         forged["message"]["snapshot"]["generation"] = json!(2);
         assert!(runtime.block_on(handle.call(forged)).is_err());

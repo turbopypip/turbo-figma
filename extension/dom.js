@@ -100,7 +100,7 @@ export async function figmaAction(method, params, fileKey) {
       return mounted(id) || null;
     };
 
-    // Screenshot-only path supplied by the network snapshot. Expand just its ancestors.
+    // Root-first path supplied by the network snapshot for screenshots and exports.
     if (method === 'select_node' && Array.isArray(params.ancestors)) {
       const layersTab = [...document.querySelectorAll('[role="tab"]')].find(el => label(el) === 'Layers');
       if (layersTab && layersTab.getAttribute('aria-selected') !== 'true') {
@@ -112,14 +112,14 @@ export async function figmaAction(method, params, fileKey) {
         await waitFor(() => button('Layers')?.getAttribute('aria-expanded') === 'true' &&
           document.querySelector('[data-testid="objects-panel"]'), 'Layers panel did not expand.');
       }
-      if (params.ancestors.length > 64) throw new Error('Screenshot ancestor path exceeds limit');
+      if (params.ancestors.length > 64) throw new Error('Selection ancestor path exceeds limit');
       for (const id of params.ancestors) {
         checkFile();
         const row = await findRow(id);
-        if (!row) throw new Error('Screenshot ancestor is not available on the current page');
+        if (!row) throw new Error('Selection ancestor is not available on the current page');
         if (row.getAttribute('aria-expanded') === 'false') {
           const caret = row.querySelector('[data-testid="layers-panel-expand-caret"]');
-          if (!caret) throw new Error('Screenshot ancestor cannot be expanded');
+          if (!caret) throw new Error('Selection ancestor cannot be expanded');
           caret.click();
           await waitFor(() => mounted(id)?.getAttribute('aria-expanded') === 'true');
         }

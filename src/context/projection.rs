@@ -13,7 +13,11 @@ fn copy(out: &mut Value, n: &Value, keys: &[&str]) {
 }
 fn context(n: &Value, mut css: Ordered, style_order: &Value) -> Value {
     let mut out = json!({});
-    copy(&mut out, n, &["id", "parentId", "depth", "name", "type"]);
+    copy(
+        &mut out,
+        n,
+        &["id", "parentId", "depth", "name", "type", "hasChildren"],
+    );
     if let Some(v) = n["visible"].as_bool() {
         out["hidden"] = json!(!v);
     }
@@ -196,6 +200,25 @@ pub fn project(q: &Value) -> Result<Value> {
         if q["format"] != "debug" {
             entry = context(&entry, css, &style_order);
         }
+        if q["compact"] == true {
+            compact(&mut entry);
+            let glyph = entry["type"] == "TEXT"
+                && entry["text"].as_str().is_some_and(|text| text.chars().count() == 1);
+            if q["summarizeDescendant"] == true && q["view"] != "map"
+                && (entry["type"] == "VECTOR" || glyph) {
+                // Preserve every ID and visual CSS; exact-node reads retain full provenance.
+                let geometry = entry["layout"]["geometry"].clone();
+                let css = entry["layout"]["css"].clone();
+                entry["layout"] = json!({"geometry":geometry,"css":css});
+                entry.as_object_mut().unwrap().remove("style");
+                entry["detailsOmitted"] = json!(if glyph {
+                    "Glyph summary; request this ID with nodeIds and depth:0 for full properties"
+                } else {
+                    "Vector summary; request this ID with nodeIds and depth:0 for full properties"
+                });
+            }
+            select_fields(&mut entry, &q["view"], &q["fields"]);
+        }
         if q["maxEntryBytes"].as_u64().is_some_and(|limit| {
             crate::json::bytes(&entry)
                 .map(|b| b.len() as u64 > limit)
@@ -211,4 +234,107 @@ pub fn project(q: &Value) -> Result<Value> {
         return Err("Projection output limit exceeded".into());
     }
     Ok(json!(output))
+}
+
+// Shared public representation, applied before byte limits and again after UI-kit mapping.
+pub fn compact(node: &mut Value) {
+    if let Some(o) = node.as_object_mut() {
+        o.remove("properties");
+    }
+    fn clean(v: &mut Value) {
+        match v {
+            Value::Object(o) => {
+                o.remove("cssText");
+                if o.get("colors") == Some(&json!([])) {
+                    o.remove("colors");
+                }
+                for v in o.values_mut() {
+                    clean(v);
+                }
+            }
+            Value::Array(a) => {
+                for v in a {
+                    clean(v);
+                }
+            }
+            _ => {}
+        }
+    }
+    // Keep property-specific provenance (e.g. requested fonts and geometry) intact.
+    if let Some(l) = node.get_mut("layout").and_then(Value::as_object_mut) {
+        l.remove("note");
+        l.remove("hints");
+        l.remove("cssText");
+        if let Some(a) = l.get_mut("unresolved").and_then(Value::as_array_mut) {
+            for u in a {
+                if u["reason"] == "Not available as a verified layout value in this snapshot." {
+                    u.as_object_mut().unwrap().remove("reason");
+                }
+            }
+        }
+    }
+    let combined = node["layout"]["css"].is_object();
+    if let Some(s) = node.get_mut("style").and_then(Value::as_object_mut) {
+        if combined {
+            s.remove("css");
+        }
+        s.remove("provenance");
+    }
+    // Remove legacy representations in nested text styles too.
+    if let Some(s) = node.get_mut("style") {
+        clean(s);
+    }
+    if let Some(l) = node.get_mut("layout").and_then(Value::as_object_mut) {
+        l.remove("colors");
+    }
+}
+pub fn select_fields(node: &mut Value, view: &Value, fields: &Value) {
+    if view == "map" {
+        let mut map = json!({});
+        copy(
+            &mut map,
+            node,
+            &[
+                "id",
+                "parentId",
+                "depth",
+                "name",
+                "type",
+                "hidden",
+                "hasChildren",
+                "propertiesOmitted",
+                "instanceUnresolved",
+            ],
+        );
+        let g = &node["layout"]["geometry"];
+        map["geometry"] = json!({"size":g["size"],"position":g["position"],"absolutePosition":g["absolutePosition"]});
+        *node = map;
+        return;
+    }
+    let Some(fields) = fields.as_array() else {
+        return;
+    };
+    let has = |s: &str| fields.iter().any(|v| v == s);
+    if !has("layout") {
+        if has("style") && node["layout"]["css"].is_object() {
+            node["style"]["css"] = node["layout"]["css"].clone();
+        }
+        node.as_object_mut().unwrap().remove("layout");
+    }
+    if !has("text") {
+        node.as_object_mut().unwrap().remove("text");
+        if let Some(s) = node.get_mut("style").and_then(Value::as_object_mut) {
+            s.remove("text");
+        }
+    }
+    if !has("style") {
+        if has("text") && !node["style"]["text"].is_null() {
+            node["style"] = json!({"text":node["style"]["text"]});
+        } else {
+            node.as_object_mut().unwrap().remove("style");
+        }
+    }
+    if !has("component") {
+        node.as_object_mut().unwrap().remove("component");
+    }
 }

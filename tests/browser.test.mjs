@@ -88,3 +88,27 @@ test('SVG preparation opens a collapsed Export panel through pointer/mouse activ
   assert.equal(result.result.id, '1:1');
   assert.equal(calls.click, 1);
 });
+
+test('selection expands collapsed ancestors root first before selecting the target', async () => {
+  const expanded = new Set(), clicks = [];
+  let selectedId = 'outer';
+  const row = id => ({
+    getAttribute: key => ({'aria-expanded': String(expanded.has(id)), 'data-fpl-selected-root': String(selectedId === id), 'aria-level': '1'})[key] ?? null,
+    hasAttribute: () => true,
+    getBoundingClientRect: () => ({left:0, top:0, width:10, height:10}),
+    dispatchEvent: () => {},
+    click: () => { selectedId = id; clicks.push(id); },
+    querySelector: selector => selector.includes('expand-caret') ? {click: () => { expanded.add(id); clicks.push(`expand:${id}`); }}
+      : selector.includes('layers-panel-row') ? {getAttribute: () => `${id}-layers-panel-row`, innerText:id} : null,
+  });
+  const document = {
+    querySelectorAll: selector => selector === '[role="row"]'
+      ? ['outer', ...(expanded.has('outer') ? ['inner'] : []), ...(expanded.has('inner') ? ['target'] : [])].map(row) : [],
+    querySelector: () => ({getAttribute: () => 'Figma Design, 1 item selected'}),
+  };
+  const action = vm.runInNewContext(`(${figmaAction.toString()})`, {document, URL, location:{href:'https://www.figma.com/design/test/File'}, setTimeout, PointerEvent:class {}, MouseEvent:class {}});
+  const result = await action('select_node', {nodeId:'target', ancestors:['outer','inner']}, 'test');
+  assert.equal(result.error, undefined);
+  assert.equal(result.result.id, 'target');
+  assert.deepEqual(clicks, ['expand:outer','expand:inner','target']);
+});

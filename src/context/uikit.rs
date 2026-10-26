@@ -513,17 +513,17 @@ fn map_layout(layout: &Value, vars: &Variables) -> Value {
         };
         mapped[property] = json!(value);
     }
-    result["cssText"] = json!(mapped
-        .as_object()
-        .unwrap()
-        .iter()
-        .map(|(k, v)| format!("{k}: {};", v.as_str().unwrap_or("")))
-        .collect::<Vec<_>>()
-        .join("\n"));
+    // Keep original literals only where a UI-kit substitution changed the CSS.
+    result["resolvedValues"] = Value::Object(
+        css.iter()
+            .filter(|(k, v)| mapped.get(*k) != Some(*v))
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect(),
+    );
     result["css"] = mapped;
-    result["resolvedValues"] = layout["css"].clone();
+    result.as_object_mut().unwrap().remove("cssText");
     result["variableMatching"] = json!(matches);
-    result["colors"] = json!([]);
+    result.as_object_mut().unwrap().remove("colors");
     result
 }
 pub fn map_node(node: &Value, vars: &Variables) -> Result<Value> {

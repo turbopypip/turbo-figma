@@ -22,6 +22,7 @@ async function fixture(pairing, session, overrides={}) {
     scripting:{executeScript:async()=>{requests++;return [{result:{result:{ok:true}}}];}}};
   const clock={setTimeout:(fn,delay)=>{timers.set(++next,{fn,delay});return next;},clearTimeout:id=>timers.delete(id),
     setInterval:(fn,delay)=>{intervals.set(++next,{fn,delay});return next;},clearInterval:id=>intervals.delete(id)};
+  if (overrides.createCollector) chrome.debugger = {};
   const controller=createConnection(chrome,{WebSocket:Socket,timers:clock,onState:s=>states.push(s),...overrides});
   await controller.ready;
   return {controller,chrome,states,local,stored,sockets,timers,intervals,get requests(){return requests;},
@@ -102,7 +103,7 @@ test('popup close only stops UI refresh; information goes directly to README',as
   vm.runInNewContext(source,{document:{getElementById:id=>elements[id]},window:{addEventListener:(name,fn)=>{close=fn;}},
     setInterval:()=>1,clearInterval:()=>{cleared=true;},
     chrome:{tabs:{query:async()=>[{id:7,url:'https://www.figma.com/design/test/name'}]},storage:{onChanged:{addListener(){},removeListener(){}},local:{get:async()=>({})}},runtime:{sendMessage:async msg=>{sent.push(msg);return {state:'connected',message:'Подключено'};}}}});
-  await flush();assert.equal(elements['secret-field'].hidden,false);assert.equal(elements.secret.required,true);close();assert.equal(cleared,true);assert.deepEqual(sent.map(m=>m.action),['status']);
+  await flush();assert.equal(elements['secret-field'].hidden,false);assert.equal(elements.secret.required,true);close();assert.equal(cleared,true);assert.deepEqual(sent.map(m=>m.action),['status','cache-info']);
   assert.match(html,/href="https:\/\/github.com\/turbopypip\/turbo-figma#readme" target="_blank"/);
 });
 test('one secret entry pairs different Figma tabs and files, including after browser restart', async()=>{
@@ -207,9 +208,9 @@ test('popup cache button sends one explicit clear command and keeps cache feedba
         {cache:{bytes:0,removedBytes:1024,removedGenerations:2,protectedEntries:1}};}}}});
   await flush(); assert.equal(element('cache-clear').disabled,false);
   await element('cache-clear').listeners.click();
-  assert.deepEqual(sent.map(m=>m.action),['status','cache-clear']);
-  assert.match(element('cache-status').textContent,/Удалено 2/);
-  assert.match(element('cache-status').textContent,/сохранены/);
+  assert.deepEqual(sent.map(m=>m.action),['status','cache-info','cache-clear']);
+  assert.match(element('cache-status').textContent,/Кеш: 0.00 МиБ/);
+  assert.match(element('cache-status').title,/сохранены/);
   assert.equal(element('status').textContent,'Подключено');
 });
 
@@ -315,4 +316,59 @@ test('real batch continues after PNG preparation failure and allows retry, scree
       assert.equal(ws.sent.at(-1).result.format,format);
     }
   } finally {await f.controller.control({action:'disconnect'});await bridge.close();}
+});
+
+test('explicit connect captures after auth, survives popup close, and disconnect stops capture', async () => {
+  const starts=[]; let stops=0;
+  const collector={status:{state:'idle'},start:async args=>starts.push(args),stop:async()=>{stops++;}};
+  const f=await fixture(undefined,undefined,{createCollector:()=>collector});
+  await f.connect(); assert.equal(starts.length,0);
+  const ws=f.sockets[0]; ws.open(); await ws.message({type:'ready'});
+  assert.equal(starts.length,1); assert.equal(starts[0].reload,true); assert.equal(starts[0].tabId,7);
+  await ws.message({type:'ready'}); assert.equal(starts.length,1);
+  ws.close(1006); f.tick(); const next=f.sockets.at(-1); next.open(); await next.message({type:'ready'});
+  assert.equal(starts.length,1); // automatic reconnect must not reload a working tab
+  assert.match((await f.controller.control({action:'status'})).message,/Подключить/);
+  const before=stops; await f.controller.control({action:'disconnect'}); assert.equal(stops,before+1);
+});
+test('disconnect while authentication capture is checking the tab prevents reload', async () => {
+  const starts=[];
+  const f=await fixture(undefined,undefined,{createCollector:()=>({status:{state:'idle'},start:async args=>starts.push(args),stop:async()=>{}})});
+  await f.connect(); const ws=f.sockets[0]; ws.open();
+  let release; f.chrome.tabs.get=()=>new Promise(resolve=>{release=resolve;});
+  const ready=ws.message({type:'ready'}); await flush();
+  await f.controller.control({action:'disconnect'});
+  release({id:7,url:'https://www.figma.com/design/test/name'}); await ready;
+  assert.equal(starts.length,0);
+});
+
+test('cache size refresh waits for capture and preserves size while MCP is busy', async () => {
+  const {readFile}=await import('node:fs/promises');const vm=await import('node:vm');
+  const elements=new Map();const element=id=>{if(!elements.has(id))elements.set(id,{value:'',addEventListener(){}});return elements.get(id);};
+  let refresh,now=20000,state={state:'connected',capture:{state:'capturing'}};const sent=[];
+  vm.runInNewContext(await readFile('extension/popup.js','utf8'),{
+    Date:{now:()=>now},document:{getElementById:element},window:{addEventListener(){}},setInterval:fn=>{refresh=fn;},clearInterval(){},
+    chrome:{tabs:{query:async()=>[{id:7,url:'https://www.figma.com/design/test/name'}]},storage:{onChanged:{addListener(){},removeListener(){}},local:{get:async()=>({})}},
+    runtime:{sendMessage:async msg=>{sent.push(msg.action);return msg.action==='status'?state:{cache:{bytes:1048576}};}}}});
+  await flush();assert.deepEqual(sent,['status']);assert.match(element('cache-status').textContent,/после загрузки/);
+  state={state:'connected',capture:{state:'ready'}};await refresh();assert.deepEqual(sent,['status','status','cache-info']);
+  assert.equal(element('cache-status').textContent,'Кеш: 1.00 МиБ.');
+  now+=11000;state={state:'busy',busy:true,capture:{state:'ready'}};await refresh();
+  assert.equal(sent.at(-1),'status');assert.equal(element('cache-status').textContent,'Кеш: 1.00 МиБ.');
+  state={state:'connected',capture:{state:'ready'}};await refresh();assert.equal(sent.at(-1),'cache-info');
+});
+
+for (const method of ['get_screenshot','export_asset']) test(`${method} forwards ancestor path without navigating`, async () => {
+ const f=await fixture({port:3055,secret},target), calls=[], updates=[];
+ f.chrome.windows={update:async()=>{}};
+ f.chrome.tabs.update=async(id,options)=>updates.push(options);
+ f.chrome.scripting.executeScript=async({args:[action,params]})=>{
+  calls.push({action,params});
+  return action==='select_node' ? [{result:{result:{id:'1:1'}}}] : [{result:{error:'stop before copy',nativeCopyStarted:false}}];
+ };
+ const ws=f.sockets[0];ws.open();await ws.message({type:'ready'});
+ await ws.message({type:'request',id:'path',method,params:{url:'https://www.figma.com/design/test/name?node-id=1-1',nodeId:'1:1',format:'PNG',ancestors:['0:1','0:2']}});
+ assert.deepEqual(calls[0],{action:'select_node',params:{nodeId:'1:1',ancestors:['0:1','0:2']}});
+ assert.equal(calls[1].action,'begin_export');
+ assert.ok(updates.every(o=>!o.url));
 });

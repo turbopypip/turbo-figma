@@ -17,6 +17,7 @@ struct Item {
     context: Option<Rc<Context>>,
     geometry: Value,
     modes: Rc<Modes>,
+    section_depth: Option<u64>,
 }
 fn slot(d: &mut Disk, id: &str) -> Result<Value> {
     d.runtime_command(&json!({"op":"slot","id":id}))
@@ -153,7 +154,18 @@ pub fn query(d: &mut Disk, q: &Value) -> Result<Value> {
         context: None,
         geometry,
         modes: Rc::new(modes),
+        section_depth: None,
     }];
+    let requested: HashSet<String> = q["nodeIds"]
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(Value::as_str)
+                .map(str::to_owned)
+                .collect()
+        })
+        .unwrap_or_default();
+    let mut found = HashSet::new();
     let mut seen = HashSet::new();
     let mut nodes = vec![];
     let mut pending = vec![];
@@ -219,11 +231,20 @@ pub fn query(d: &mut Disk, q: &Value) -> Result<Value> {
             }
             continue;
         }
-        if truthy(&n["instanceUnresolved"]) {
+        let section_depth = if requested.contains(&item.id) {
+            found.insert(item.id.clone());
+            Some(0)
+        } else {
+            item.section_depth
+        };
+        let selected = requested.is_empty() || section_depth.is_some_and(|d| d <= depth);
+        if selected && truthy(&n["instanceUnresolved"]) {
             unresolved += 1;
         }
-        let output = eligible >= offset;
-        eligible += 1;
+        let output = selected && eligible >= offset;
+        if selected {
+            eligible += 1;
+        }
         if output && nodes.len() < max && !full {
             let parent_id = if let Some(p) = &item.parent_id {
                 json!(p)
@@ -244,10 +265,23 @@ pub fn query(d: &mut Disk, q: &Value) -> Result<Value> {
                 Value::Null
             };
             let mut entry = json!({"id":item.id,"parentId":parent_id,"depth":item.depth});
+            if q["view"] == "map" {
+                entry["hasChildren"] = json!(
+                    !skip_children
+                        && !children(
+                            d,
+                            &child_source,
+                            child_context.is_some(),
+                            &mut dep_reads,
+                            &mut dep_bytes
+                        )?
+                        .is_empty()
+                );
+            }
             if item.context.is_some() {
                 entry["sourceNodeId"] = json!(item.source);
             }
-            let request = json!({"entries":[{"node":n,"entry":entry,"bindings":bindings,"parent":parent,"geometry":geometry}],"schema":q["schema"],"format":q["format"],"maxEntryBytes":120000.min(budget-1)});
+            let request = json!({"entries":[{"node":n,"entry":entry,"bindings":bindings,"parent":parent,"geometry":geometry}],"schema":q["schema"],"format":q["format"],"compact":q["compact"],"summarizeDescendant":item.id != root && !requested.contains(&item.id),"view":q["view"],"fields":q["fields"],"maxEntryBytes":120000.min(budget-1)});
             let projected = crate::context::project(&request)?;
             let mut entry = if projected[0].is_null() {
                 abbreviated(&entry, &n)
@@ -268,7 +302,28 @@ pub fn query(d: &mut Disk, q: &Value) -> Result<Value> {
         if skip_children {
             continue;
         }
-        if item.depth >= depth {
+        let at_limit = if requested.is_empty() {
+            item.depth >= depth
+        } else {
+            item.depth >= 50
+        };
+        if selected && section_depth.unwrap_or(item.depth) >= depth && !at_limit {
+            if !children(
+                d,
+                &child_source,
+                child_context.is_some(),
+                &mut dep_reads,
+                &mut dep_bytes,
+            )?
+            .is_empty()
+            {
+                pending_count += 1;
+                if pending.len() < 10 {
+                    pending.push(item.id.clone());
+                }
+            }
+        }
+        if at_limit {
             let has = if applied > 0 {
                 !children(
                     d,
@@ -281,7 +336,7 @@ pub fn query(d: &mut Disk, q: &Value) -> Result<Value> {
             } else {
                 slot(d, &child_source)?["children"].as_u64().unwrap_or(0) > 0
             };
-            if has {
+            if has && selected {
                 pending_count += 1;
                 if pending.len() < 10 {
                     pending.push(item.id);
@@ -318,13 +373,20 @@ pub fn query(d: &mut Disk, q: &Value) -> Result<Value> {
                     context: child_context.clone(),
                     geometry: geometry.clone(),
                     modes: modes.clone(),
+                    section_depth: section_depth.map(|d| d + 1),
                 });
             }
         }
     }
     let stats = d.stats();
     let next = offset + nodes.len() as u64;
-    Ok(
-        json!({"adapter":"figma-network-snapshot","live":applied>0,"appliedLiveBatches":applied,"fileKey":file,"rootId":root,"documentRecords":stats["documentRecords"],"initialBatches":stats["initialBatches"],"ignoredLiveBatches":stats["ignoredLiveBatches"],"nodes":nodes,"selectionPath":ancestors.iter().filter(|(_,n)|n["type"]!="CANVAS"&&n["type"]!="DOCUMENT").map(|(id,_)|id).collect::<Vec<_>>(),"traversal":{"eligibleRecords":eligible,"returned":nodes.len(),"pendingDepth":pending,"skippedHidden":skipped,"pendingDepthCount":pending_count,"skippedHiddenCount":skipped_count,"diagnosticListsTruncated":pending_count>pending.len()||skipped_count>skipped.len(),"nextOffset":if next<eligible{json!(next)}else{Value::Null},"unresolvedInstanceCount":unresolved},"incomplete":true,"nativeVariables":{"source":"captured-definitions","dependencyReads":var_reads,"dependencyBytes":var_bytes,"complete":false},"components":{"representation":"expanded-supported-subset","complete":false,"dependencyReads":dep_reads,"dependencyBytes":dep_bytes,"limits":{"reads":20000,"bytes":67108864}},"limitations":[if applied>0{"Bounded supported live changes applied to the retained disk index; unsupported changes require recapture."}else{"Captured initial state; freshness is checked by the managed reader."},"Instance children use canonical instance/source paths, not browser-session generated IDs; native variable resolution reports missing definitions and unknown modes; geometry blobs and image assets are not resolved.","Layers order uses wire position for Auto Layout and reverse paint order for other containers; layout parity is verified on the documented control selection."]}),
-    )
+    let mut result = json!({"adapter":"figma-network-snapshot","live":applied>0,"appliedLiveBatches":applied,"fileKey":file,"rootId":root,"documentRecords":stats["documentRecords"],"initialBatches":stats["initialBatches"],"ignoredLiveBatches":stats["ignoredLiveBatches"],"nodes":nodes,"selectionPath":ancestors.iter().filter(|(_,n)|n["type"]!="CANVAS"&&n["type"]!="DOCUMENT").map(|(id,_)|id).collect::<Vec<_>>(),"traversal":{"eligibleRecords":eligible,"returned":nodes.len(),"pendingDepth":pending,"skippedHidden":skipped,"pendingDepthCount":pending_count,"skippedHiddenCount":skipped_count,"diagnosticListsTruncated":pending_count>pending.len()||skipped_count>skipped.len(),"nextOffset":if next<eligible{json!(next)}else{Value::Null},"unresolvedInstanceCount":unresolved},"incomplete":true,"nativeVariables":{"source":"captured-definitions","dependencyReads":var_reads,"dependencyBytes":var_bytes,"complete":false},"components":{"representation":"expanded-supported-subset","complete":false,"dependencyReads":dep_reads,"dependencyBytes":dep_bytes,"limits":{"reads":20000,"bytes":67108864}},"limitations":[if applied>0{"Bounded supported live changes applied to the retained disk index; unsupported changes require recapture."}else{"Captured initial state; freshness is checked by the managed reader."},"Instance children use canonical instance/source paths, not browser-session generated IDs; native variable resolution reports missing definitions and unknown modes; geometry blobs and image assets are not resolved.","Layers order uses wire position for Auto Layout and reverse paint order for other containers; layout parity is verified on the documented control selection."]});
+    if !requested.is_empty() {
+        result["traversal"]["missingNodeIds"] = json!(requested
+            .difference(&found)
+            .cloned()
+            .collect::<std::collections::BTreeSet<_>>());
+        result["traversal"]["scopeScanDepth"] = json!(50);
+    }
+    Ok(result)
 }

@@ -111,7 +111,7 @@ export function createNetworkCollector(chrome, { createSender = createCaptureSen
         if (ctx.closed) return;
         ctx.queue.shift(); ctx.queuedBytes -= record.length;
         ctx.events++; ctx.bytes += record.length;
-        publish(ctx, 'capturing', 'Запись начального снимка. Ожидаю JOIN_END; если файл уже загружен, выбери «Перезагрузить и захватить».');
+        publish(ctx, 'capturing', 'Загружаю макет…');
       }
     } catch (error) { fail(ctx, `Передача захвата остановлена: ${error.message}`); }
     finally { ctx.draining = false; }
@@ -144,7 +144,7 @@ export function createNetworkCollector(chrome, { createSender = createCaptureSen
     if (!ctx || ctx.closed || !ctx.attached || source.tabId !== ctx.tabId || (source.sessionId && !ctx.sessions.has(source.sessionId))) return;
     if (method === 'Page.frameNavigated' && !source.sessionId && !p.frame?.parentId) {
       if (ctx.expectedNavigation && !ctx.ready && !ctx.sockets.size) ctx.expectedNavigation = false;
-      else fail(ctx, 'Документ вкладки сменился; перезагрузить и захватить заново.');
+      else fail(ctx, 'Документ вкладки сменился. Нажми «Подключить» заново.');
       return;
     }
     if (method === 'Target.attachedToTarget') {
@@ -174,12 +174,12 @@ export function createNetworkCollector(chrome, { createSender = createCaptureSen
       try { url = new URL(p.url); } catch { return; }
       if (url.origin !== 'wss://www.figma.com' || url.pathname !== `/api/multiplayer/${ctx.fileKey}`) return;
       if (ctx.sockets.size >= CAPTURE_LIMITS.sockets) { fail(ctx, 'Превышен лимит multiplayer-соединений.'); return; }
-      if (ctx.sealed) { fail(ctx, 'Снимок устарел: multiplayer переподключён. Перезагрузить и захватить заново.'); return; }
+      if (ctx.sealed) { fail(ctx, 'Снимок устарел: multiplayer переподключён. Нажми «Подключить» для нового захвата.'); return; }
       ctx.sockets.add(key);
     } else if (ctx.sockets.has(key)) {
       if (ctx.sealed && ['Network.webSocketFrameReceived', 'Network.webSocketFrameSent'].includes(method) && ![9, 10].includes(p.response?.opcode)) {
         if (p.response?.opcode !== 2 || typeof p.response.payloadData !== 'string' || p.response.payloadData.length > 192 * 1024) {
-          fail(ctx, 'Снимок устарел: неподдержанный live-пакет. Перезагрузить и захватить заново.'); return;
+          fail(ctx, 'Снимок устарел: неподдержанный live-пакет. Нажми «Подключить» для нового захвата.'); return;
         }
         received(ctx, source, p, method === 'Network.webSocketFrameSent');
         return;
@@ -215,7 +215,7 @@ export function createNetworkCollector(chrome, { createSender = createCaptureSen
       ctx.sender = createSender(socket, { fileKey, sessionId: crypto.randomUUID(), generation: 1 }, { format: 'ndjson-v1' });
       ctx.disconnected = () => fail(ctx, 'Связь с MCP прервана; захват неполон.');
       socket.addEventListener('close', ctx.disconnected);
-      ctx.timer = timers.setTimeout(() => fail(ctx, 'Таймаут начальной загрузки. Подключись заново и выбери «Перезагрузить и захватить».'), initialTimeout);
+      ctx.timer = timers.setTimeout(() => fail(ctx, 'Таймаут загрузки макета. Нажми «Подключить» заново.'), initialTimeout);
       try {
         await ctx.sender.begin();
         if (ctx.closed) throw new Error('Захват отменён.');
@@ -232,7 +232,7 @@ export function createNetworkCollector(chrome, { createSender = createCaptureSen
           await cancellable(ctx, chrome.tabs.reload(tabId));
           if (ctx.closed) throw new Error('Захват отменён.');
         }
-        publish(ctx, 'capturing', 'Ожидаю входящие multiplayer-сообщения. Позднее подключение не даёт полного снимка.');
+        publish(ctx, 'capturing', 'Загружаю макет…');
       } catch (error) {
         if (current === ctx && !ctx.closed) await stop(`Не удалось начать захват: ${error.message}`, true);
         throw error;

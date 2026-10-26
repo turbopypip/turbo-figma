@@ -19,7 +19,7 @@ const mode=id=>({variableModeBySetMap:{entries:[{variableSetID:{guid:g(100)},var
 const variable=(id,a,b)=>n(id,null,{type:'VARIABLE',name:'Token',variableResolvedType:'FLOAT',variableSetID:{guid:g(100)},variableDataValues:{entries:[{modeID:g(10),variableData:a},{modeID:g(11),variableData:b}]}});
 const collection=n(100,null,{type:'VARIABLE_SET',name:'Theme',variableSetModes:[{id:g(10),name:'Light',sortPosition:'a'},{id:g(11),name:'Dark',sortPosition:'b'}]});
 const transform={m00:1,m01:0,m02:1,m10:0,m11:1,m12:2};
-async function compare(nodes,queries) {
+async function compare(nodes,queries,verify) {
  const root=path.resolve('.cache/figma-network/tests');await mkdir(root,{recursive:true});const dir=await mkdtemp(path.join(root,'native-traversal-'));
  const scratch=path.join(dir,'rust');await mkdir(scratch);
 
@@ -31,6 +31,7 @@ async function compare(nodes,queries) {
   const output=await new Promise((resolve,reject)=>{const child=spawn(rustBinary,['--inspect-index','model',path.join(dir,'config')]);const chunks=[];let stderr='';child.stdout.on('data',b=>chunks.push(b));child.stderr.on('data',b=>stderr+=b);child.on('error',reject);child.on('close',(code,signal)=>code!==0?reject(Error(signal+': '+stderr)):resolve(Buffer.concat(chunks)));});
   const replies=[];for(let i=0;i<output.length;){const size=output.readUInt32LE(i);i+=4;replies.push(JSON.parse(output.subarray(i,i+size)));i+=size;}
   assert.equal(replies.length,qs.length+1,JSON.stringify(replies.map(r=>({kind:r.kind,error:r.reply?.error}))));
+  if(verify){for(const r of replies.slice(1))assert.equal(r.reply.error,undefined);await verify(replies.slice(1).map(r=>r.reply.result));return;}
   for(const [i,q] of qs.entries()){const result=replies[i+1].reply;const expected=golden[goldenIndex++];assert.ok(expected);assert.equal(result.error,expected.error,JSON.stringify(q));if(!expected.error)assert.deepEqual(result.result,expected.result,JSON.stringify(q));}
  }finally{await rm(dir,{recursive:true,force:true});}
 }
@@ -67,3 +68,65 @@ test('native bindings mask unresolved paint/text values and enforce collection l
 });
 
 test.after(()=>assert.equal(goldenIndex,golden.length));
+
+
+test('compact scoped reads preserve instance overrides, field selection and byte savings',native,async()=>{
+ const nodes=[n(1,null,{type:'FRAME',size:{x:600,y:400},stackMode:'VERTICAL',transform}),
+ n(2,1,{type:'INSTANCE',name:'Card',transform,symbolData:{symbolID:g(200),symbolOverrides:[patch([30],{textData:'Unique',fontSize:17})]}}),
+ n(3,1,{type:'TEXT',textData:'Outside',fontSize:12}),
+ n(200,null,{type:'SYMBOL',size:{x:100,y:50},stackMode:'VERTICAL'}),
+ n(30,200,{type:'TEXT',textData:'Default',fontSize:10,size:{x:40,y:20},transform})];
+ const q={format:'context',depth:4};
+ await compare(nodes,[q,{...q,compact:true},{...q,compact:true,view:'map'},
+ {...q,compact:true,nodeIds:['1:2'],depth:1},
+ {...q,compact:true,nodeIds:['1:2','I1:2;1:30'],depth:1},
+ {...q,compact:true,nodeIds:['I1:2;1:30'],depth:0,fields:['text']},
+ {...q,compact:true,nodeIds:['I1:2;1:30'],depth:0,fields:['style']},
+ {...q,compact:true,nodeIds:['I1:2;1:30'],depth:0,fields:['layout']}],r=>{
+ const [old,compact,map,batch,overlap,text,style,layout]=r;
+ assert.ok(Buffer.byteLength(JSON.stringify(compact))<Buffer.byteLength(JSON.stringify(old)));
+ assert.deepEqual(compact.nodes.map(n=>n.layout.css),old.nodes.map(n=>n.layout.css));
+ assert.deepEqual(batch.nodes.map(n=>n.id),['1:2','I1:2;1:30']);
+ assert.equal(new Set(overlap.nodes.map(n=>n.id)).size,overlap.nodes.length);
+ assert.equal(text.nodes.length,1);assert.equal(text.nodes[0].text,'Unique');assert.equal(text.nodes[0].layout,undefined);
+ assert.equal(text.nodes[0].style.text.base.css['font-size'],'17px');
+ assert.equal(style.nodes[0].style.css['font-size'],'17px');assert.equal(style.nodes[0].layout,undefined);
+ assert.equal(layout.nodes[0].layout.css['font-size'],'17px');assert.equal(layout.nodes[0].style,undefined);
+ assert.equal(map.nodes.find(n=>n.id==='1:2').hasChildren,true);assert.equal(map.nodes.find(n=>n.id==='I1:2;1:30').hasChildren,false);
+ for(const n of compact.nodes){assert.equal(n.properties,undefined);assert.equal(n.layout.cssText,undefined);assert.equal(n.style.css,undefined);}
+ });
+});
+
+test('vector descendants are compact but exact node reads retain full details',native,async()=>{
+ const nodes=[n(1,null,{type:'FRAME',transform}),n(2,1,{type:'VECTOR',name:'Letter',transform,size:{x:10,y:20},fillPaints:[{type:'SOLID',color:{r:1,g:0,b:0,a:1}}]})];
+ await compare(nodes,[{format:'context',compact:true},{format:'context',compact:true,nodeIds:['1:2'],depth:0},{format:'context',compact:true,id:'1:2',depth:0}],results=>{
+  const summary=results[0].nodes.find(n=>n.id==='1:2');
+  assert.match(summary.detailsOmitted,/Vector summary/);
+  assert.ok(summary.layout.geometry);
+  for(const result of results.slice(1)) {
+   assert.equal(result.nodes[0].detailsOmitted,undefined);
+   assert.ok(result.nodes[0].style);
+   assert.ok(JSON.stringify(summary).length < JSON.stringify(result.nodes[0]).length);
+  }
+ });
+});
+
+test('individual badge letters retain text and CSS without repeating full text styles',native,async()=>{
+ const nodes=[n(1,null,{type:'FRAME',transform}), ...['я','а','\u2005','More text'].map((text,i)=>n(i+2,1,{type:'TEXT',name:'Badge',textData:text,transform,fontSize:12,size:{x:10,y:20}}))];
+ await compare(nodes,[{format:'context',compact:true},{format:'context',compact:true,nodeIds:['1:2'],depth:0},{format:'context',compact:true,id:'1:2',depth:0}],results=>{
+  const letters=results[0].nodes.filter(n=>n.type==='TEXT' && n.text!=='More text');
+  assert.equal(letters.length,3);
+  for(const letter of letters){
+   assert.match(letter.detailsOmitted,/Glyph summary/);
+   assert.equal(letter.layout.css['font-size'],'12px');
+   assert.ok(letter.layout.geometry);
+  }
+  assert.equal(results[0].nodes.find(n=>n.text==='More text').detailsOmitted,undefined);
+  for(const result of results.slice(1)){
+   assert.equal(result.nodes[0].text,'я');
+   assert.equal(result.nodes[0].detailsOmitted,undefined);
+   assert.ok(result.nodes[0].style.text);
+   assert.ok(JSON.stringify(result.nodes[0]).length>JSON.stringify(letters.find(n=>n.text==='я')).length);
+  }
+ });
+});

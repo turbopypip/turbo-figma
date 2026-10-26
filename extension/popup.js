@@ -21,33 +21,42 @@ chrome.storage.onChanged.addListener(onStorageChanged);
 let selected, pending = false, errorUntil = 0, connected = false;
 const cacheStatus = document.getElementById('cache-status');
 function cacheButtons() {
-  for (const name of ['cache-info', 'cache-clear']) document.getElementById(name).disabled = pending || !connected;
+  document.getElementById('cache-clear').disabled = pending || !connected;
 }
+let cacheUpdatedAt = 0;
 const size = bytes => `${(bytes / 1048576).toFixed(2)} МиБ`;
 async function cacheAction(name) {
   if (pending) return;
   pending = true; cacheButtons();
-  cacheStatus.textContent = name === 'cache-clear' ? 'Очищаю кэш…' : 'Считаю размер…';
+  if (name === 'cache-clear') cacheStatus.textContent = 'Очищаю кэш…';
   try {
     const value = await send(name);
     if (value.error) { cacheStatus.textContent = value.error; return; }
     if (!value.cache || !Number.isFinite(value.cache.bytes)) throw new Error('Invalid cache response');
     const info = value.cache;
-    cacheStatus.textContent = name === 'cache-clear'
-      ? `Удалено ${info.removedGenerations} записей (${size(info.removedBytes)}). Кэш будет создан заново при следующем сетевом захвате.`
-      : `Кэш: ${size(info.bytes)}, записей: ${info.generations}, незавершённых: ${info.incomplete}.`;
-    if (info.protectedEntries) cacheStatus.textContent += ` Посторонних или непроверенных записей: ${info.protectedEntries}; они сохранены и не включены в размер.`;
-  } catch { cacheStatus.textContent = 'Не удалось получить результат. Проверь соединение с MCP и запроси размер кэша.'; }
-  finally { pending = false; cacheButtons(); }
+    cacheStatus.textContent = `Кеш: ${size(info.bytes)}.`;
+    cacheStatus.title = info.protectedEntries
+      ? `Посторонних или непроверенных записей: ${info.protectedEntries}; они сохранены и не включены в размер.`
+      : '';
+  } catch { cacheStatus.textContent = 'Не удалось получить данные кеша. Проверь соединение с MCP.'; }
+  finally { cacheUpdatedAt = Date.now(); pending = false; cacheButtons(); }
 }
-for (const name of ['cache-info', 'cache-clear']) document.getElementById(name).addEventListener('click', () => cacheAction(name));
+document.getElementById('cache-clear').addEventListener('click', () => cacheAction('cache-clear'));
 const send = (action, extra = {}) => chrome.runtime.sendMessage({ type: 'bridge-control', action, tabId: selected?.id, ...extra });
 async function refresh() {
   if (pending || Date.now() < errorUntil) return;
   try {
     const value = await send('status');
     status.textContent = value.message || 'Отключено';
-    connected = value.state === 'connected'; cacheButtons();
+    const wasConnected = connected;
+    connected = ['connected', 'busy'].includes(value.state); cacheButtons();
+    const loading = ['starting', 'capturing', 'finishing', 'updating', 'stopping'].includes(value.capture?.state);
+    if (connected && !loading && !value.busy && (!wasConnected || Date.now() - cacheUpdatedAt >= 10000)) await cacheAction('cache-info');
+    if (connected && loading && !cacheUpdatedAt) cacheStatus.textContent = 'Кеш: размер появится после загрузки макета.';
+    if (!connected) {
+      cacheUpdatedAt = 0;
+      cacheStatus.textContent = 'Кеш: подключись к MCP, чтобы узнать размер.';
+    }
     if (value.tabId && selected?.id !== value.tabId) document.getElementById('target').textContent = 'Подключён другой макет. «Подключить» переключит мост на текущий.';
   } catch { connected = false; cacheButtons(); status.textContent = 'Расширение обновилось. Закрой это окно и открой значок снова.'; }
 }

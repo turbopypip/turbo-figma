@@ -13,7 +13,7 @@ import {pair,mockBrowser} from './helpers.mjs';
 import {zstd} from './wire-fixture.mjs';
 const native={skip:existsSync(rustBinary)?false:'Native binary unavailable',timeout:20000};
 const schema=parseSchema(`struct GUID {uint sessionID; uint localID;} struct Parent {GUID guid; string position;}
-message NodeChange {GUID guid=1; string phase=2; string type=3; string name=4; Parent parentIndex=5; string stackMode=6; string unknown=7;}
+message NodeChange {GUID guid=1; string phase=2; string type=3; string name=4; Parent parentIndex=5; string stackMode=6; string unknown=7; float stackSpacing=8;}
 message UserChange {GUID[] selection=1; string unknown=2;}
 message Message {string type=1; NodeChange[] nodeChanges=2; UserChange[] userChanges=3; string signalName=4; string signalPayload=5;}`);
 const codec=compileSchema(schema),g=n=>({sessionID:1,localID:n});
@@ -27,8 +27,8 @@ async function setup(t,respond=mockBrowser){
  return {...server,secret,ws,call:async(arguments_=args)=>server.client.callTool({name:'get_design_context',arguments:arguments_})};
 }
 
-async function capture(s, sessionId='native'){const sender=createCaptureSender(s.ws,{fileKey:'test',sessionId,generation:1});await sender.begin();const header=Buffer.alloc(12);header.write('fig-wire');header.writeUInt32LE(1,8);const schemaRecord={version:1,kind:'ws-received',session:'main',requestId:'stream',eventSequence:0,opcode:2,payload:Buffer.concat([header,zstd(encodeBinarySchema(schema))]).toString('base64')};
- const nodes=[{guid:g(1),phase:'CREATED',type:'FRAME',name:'Root',stackMode:'VERTICAL'},...Array.from({length:3},(_,i)=>({guid:g(i+2),phase:'CREATED',type:'RECTANGLE',name:`Child ${i}`,parentIndex:{guid:g(1),position:String(i)}}))];
+async function capture(s, sessionId='native', suppliedNodes){const sender=createCaptureSender(s.ws,{fileKey:'test',sessionId,generation:1});await sender.begin();const header=Buffer.alloc(12);header.write('fig-wire');header.writeUInt32LE(1,8);const schemaRecord={version:1,kind:'ws-received',session:'main',requestId:'stream',eventSequence:0,opcode:2,payload:Buffer.concat([header,zstd(encodeBinarySchema(schema))]).toString('base64')};
+ const nodes=suppliedNodes ?? [{guid:g(1),phase:'CREATED',type:'FRAME',name:'Root',stackMode:'VERTICAL',stackSpacing:8},...Array.from({length:3},(_,i)=>({guid:g(i+2),phase:'CREATED',type:'RECTANGLE',name:`Child ${i}`,parentIndex:{guid:g(1),position:String(i)}}))];
  const records=[schemaRecord,message({type:'JOIN_START'},1),message({type:'NODE_CHANGES',nodeChanges:nodes},2),message({type:'JOIN_END'},3)];for(const r of records)await sender.append(bytes(r));await sender.finish({schemaReceived:true,joinStarted:true,joinEnded:true,receivedParts:4,droppedParts:0,sequenceComplete:true});return sender;}
 test('server Rust owns live revisions, selection, stale tokens, corruption and invalidation',native,async t=>{
  const s=await setup(t);const sender=await capture(s);t.after(()=>sender.cancel());const first=JSON.parse((await s.call()).content[0].text);assert.equal(first.freshness.revision,0);assert.ok(first.traversal.continuation);
@@ -128,7 +128,7 @@ test('reconnect requires recapture and rejects old pagination after live updates
  const ws=await pair(s.port,s.secret,mockBrowser,'test');t.after(()=>ws.terminate());
  const status=await s.status();assert.equal(status.connected,true);assert.equal(status.readReady,false);
  assert.equal(status.snapshotState,'capture_required');assert.equal(status.nextAction,'reload_and_capture');
- assert.match(status.message,/Перезагрузить и захватить/);
+ assert.match(status.message,/Нажми «Подключить»/);
  assert.equal((await s.call({...args,continuation:first.traversal.continuation})).isError,true);
  const next=await capture({...s,ws},'recaptured');t.after(()=>next.cancel());
  assert.equal((await s.status()).readReady,true);
@@ -136,4 +136,47 @@ test('reconnect requires recapture and rejects old pagination after live updates
  const fresh=await s.call();assert.equal(fresh.isError,undefined);
  const page=JSON.parse(fresh.content[0].text);
  assert.equal((await s.call({...args,continuation:page.traversal.continuation})).isError,undefined);
+});
+
+test('map, batched sections and exact fields share observation and enforce coverage',native,async t=>{
+ const s=await setup(t),sender=await capture(s);t.after(()=>sender.cancel());
+ const call=async(name,arguments_)=>{const r=await s.client.callTool({name,arguments:arguments_});assert.equal(r.isError,undefined,r.content[0].text);return JSON.parse(r.content[0].text);};
+ const map=await call('get_design_map',{url:args.url});
+ assert.equal(map.view,'map');assert.equal(map.nodes.length,4);assert.match(map.observation,/^[a-f0-9]{64}$/);
+ for(const n of map.nodes){assert.equal(n.layout,undefined);assert.equal(n.style,undefined);assert.ok(n.geometry);}
+ const scope={url:args.url,observation:map.observation,revision:map.freshness.revision};
+ const vars=path.join(s.dir,'variables.css');await writeFile(vars,':root { --mimir-space-sm: 8px; }');
+ const mapped=await call('get_design_context',{...scope,depth:0,variablesFile:vars});
+ assert.equal(mapped.nodes[0].layout.css.gap,'var(--mimir-space-sm)');assert.equal(mapped.nodes[0].layout.resolvedValues.gap,'8px');assert.equal(mapped.nodes[0].layout.cssText,undefined);
+ assert.deepEqual(mapped.nodes[0].layout.resolvedValues,{gap:'8px'});assert.equal(mapped.nodes[0].style.css,undefined);assert.equal(mapped.nodes[0].layout.colors,undefined);
+ const bounded=await call('get_design_context',{...scope,maxBytes:4096});assert.ok(Buffer.byteLength(JSON.stringify(bounded))<=4096);
+ const batch={...scope,nodeIds:['1:2','1:4'],depth:0,maxNodes:1};
+ const a=await call('get_design_context',batch);assert.equal(a.traversal.eligibleRecords,2);assert.equal(a.nodes.length,1);assert.ok(a.traversal.continuation);
+ const b=await call('get_design_context',{...batch,continuation:a.traversal.continuation});
+ assert.deepEqual(new Set([...a.nodes,...b.nodes].map(n=>n.id)),new Set(batch.nodeIds));assert.equal(b.traversal.continuation,null);
+ for(const n of [...a.nodes,...b.nodes]){assert.equal(n.properties,undefined);assert.equal(n.layout.cssText,undefined);assert.equal(n.layout.note,undefined);assert.equal(n.style.css,undefined);assert.equal(n.style.provenance,undefined);}
+ const detail=await call('get_design_context',{...scope,nodeIds:['1:2'],depth:0,fields:['layout']});assert.equal(detail.nodes.length,1);assert.ok(detail.nodes[0].layout);assert.equal(detail.nodes[0].style,undefined);
+ const missing=await call('get_design_context',{...scope,nodeIds:['1:999'],depth:0});assert.deepEqual(missing.traversal.missingNodeIds,['1:999']);assert.equal(missing.truncated,true);assert.equal(missing.traversal.complete,false);
+ for(const changed of [{fields:['text']},{nodeIds:['1:3']},{revision:99},{observation:'0'.repeat(64)}]){
+ const r=await s.client.callTool({name:'get_design_context',arguments:{...batch,continuation:a.traversal.continuation,...changed}});assert.equal(r.isError,true);
+ }
+ await sender.delta(bytes(message({type:'NODE_CHANGES',nodeChanges:[{guid:g(2),name:'Changed'}]},4)));
+ const stale=await s.client.callTool({name:'get_design_context',arguments:{...scope,nodeIds:['1:2'],depth:0}});assert.equal(stale.isError,true);assert.match(stale.content[0].text,/revision/);
+ const refreshed=await call('get_design_map',{url:args.url});assert.equal(refreshed.freshness.revision,1);assert.equal(refreshed.nodes.find(n=>n.id==='1:2').name,'Changed');
+});
+
+
+test('screenshot and asset export receive root-first ancestors',native,async t=>{
+ const requests=[];
+ const s=await setup(t,(method,params)=>{requests.push({method,params});return {...mockBrowser(method,{...params,nodeId:"1:1"}),nodeId:params.nodeId};});
+ const nodes=[{guid:g(9),phase:'CREATED',type:'CANVAS'},...[1,2,3,4].map((id,i)=>({guid:g(id),phase:'CREATED',type:'FRAME',name:`Level ${id}`,parentIndex:{guid:g(i===0?9:id-1),position:'0'}}))];
+ const sender=await capture(s,'nested',nodes);t.after(()=>sender.cancel());
+ await s.client.callTool({name:'get_screenshot',arguments:{nodeId:'1:4'}});
+ await s.client.callTool({name:'export_assets',arguments:{nodeIds:['1:4'],format:'PNG'}});
+ assert.equal(requests.length,2);
+ for(const request of requests){
+  assert.deepEqual(request.params.ancestors,['1:1','1:2','1:3']);
+  assert.equal(request.params.nodeId,'1:4');
+  assert.equal(new URL(request.params.url).searchParams.get("node-id").replaceAll("-",":"),"1:4");
+ }
 });

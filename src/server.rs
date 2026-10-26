@@ -140,7 +140,7 @@ impl Server {
         v["nextAction"] = json!(if !connected { "connect" } else if busy || reading { "wait" } else if !observed { "reload_and_capture" } else { "read" });
         v["scope"] = json!("Authenticated browser bridge and observed snapshot readiness for the paired file; selection, tab availability and export readiness are not checked.");
         if connected && !busy && !reading && !observed {
-            v["message"] = json!("Мост Figma подключён, но актуального снимка нет. Нажми «Перезагрузить и захватить» в расширении; после захвата начни чтение заново, без прежнего continuation.");
+            v["message"] = json!("Мост Figma подключён, но актуального снимка нет. Нажми «Подключить» в расширении; после захвата начни чтение заново, без прежнего continuation.");
         }
         if let Some(last) = &b.last {
             v["lastDisconnect"] = last.clone();
@@ -255,12 +255,13 @@ impl Server {
     async fn execute(&self, name: &str, p: Value) -> Result<Value> {
         match name {
             "get_connection_status" => Ok(text(self.status())),
-            "get_design_context" => {
+            "get_design_context" | "get_design_map" => {
                 let (file, id, _) = self.target(&p, false).await?;
                 let mut q = p.clone();
+                q["view"] = json!(if name == "get_design_map" { "map" } else { "context" });
                 q["fileKey"] = json!(file);
                 q["id"] = json!(id);
-                if q.get("variablesFile").is_none() {
+                if name != "get_design_map" && q.get("variablesFile").is_none() {
                     if let Some(v) = &self.variables {
                         q["variablesFile"] = json!(v);
                     }
@@ -299,7 +300,7 @@ impl Server {
                 let mut params = p;
                 params["url"] = json!(url);
                 params["nodeId"] = json!(id);
-                params["ancestors"] = context["selectionPath"].clone();
+                params["ancestors"] = json!(crate::instances::array(&context["selectionPath"]).iter().rev().collect::<Vec<_>>());
                 let response = self.browser("get_screenshot", params).await?;
                 let image = crate::assets::command(&json!({"op":"decode","image":response}))
                     .map_err(|e| e.to_string())?;
@@ -329,12 +330,19 @@ impl Server {
                 }
                 let mut results = vec![];
                 for id in ids {
-                    let response = self
-                        .browser(
-                            "export_asset",
-                            json!({"nodeId":id,"format":p["format"],"scale":p["scale"]}),
-                        )
-                        .await;
+                    let response = async {
+                        // Keep exporting an already mounted node available without a capture.
+                        // A ready snapshot additionally lets us reveal collapsed ancestors.
+                        if self.status()["readReady"] != true {
+                            return self.browser("export_asset", json!({"nodeId":id,"format":p["format"],"scale":p["scale"]})).await;
+                        }
+                        let (file, node, url) = self.target(&json!({"nodeId":id}), true).await?;
+                        let context = self.read(json!({"fileKey":file,"id":node,"depth":0,"maxNodes":1,"maxBytes":12000,"includeHidden":true})).await?;
+                        if self.file().as_deref() != Some(&file) {
+                            return Err("Paired file changed during export preparation".into());
+                        }
+                        self.browser("export_asset", json!({"url":url,"nodeId":node,"ancestors":crate::instances::array(&context["selectionPath"]).iter().rev().collect::<Vec<_>>(),"format":p["format"],"scale":p["scale"]})).await
+                    }.await;
                     let result = response.and_then(|image| {
                         if image["nodeId"] != id || image["format"] != p["format"] {
                             return Err("Asset response does not match request".into());

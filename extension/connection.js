@@ -3,10 +3,10 @@ import { figmaAction } from './dom.js';
 import { parseSelectionLink } from './link.js';
 import { installDownloadCapture, readDownloadCapture } from './download.js';
 
-export function createConnection(chrome, { WebSocket = globalThis.WebSocket, timers = globalThis, onState = () => {} } = {}) {
+export function createConnection(chrome, { WebSocket = globalThis.WebSocket, timers = globalThis, onState = () => {}, createCollector = createNetworkCollector } = {}) {
   let tabId, fileKey, socket, heartbeat, busy = false, exportUncertain = false;
-  let cacheRequest, captureConnection;
-  const collector = chrome.debugger ? createNetworkCollector(chrome) : undefined;
+  let cacheRequest, captureConnection, captureOnReady = false;
+  const collector = chrome.debugger ? createCollector(chrome) : undefined;
   let currentState = 'disconnected', message = 'Отключено';
   const connectionState = state => { currentState = state; onState(state); };
   const setStatus = text => { message = text; };
@@ -16,9 +16,9 @@ export function createConnection(chrome, { WebSocket = globalThis.WebSocket, tim
     const needsCapture = connected && ['idle', 'stopped', 'stale', 'error'].includes(capture.state);
     return { state: currentState,
       message: currentState === 'busy' ? 'Выполняется запрос MCP…' : needsCapture
-        ? 'Мост подключён. Для чтения актуального макета нажми «Перезагрузить и захватить». Прежнее чтение нужно начать заново.' : message,
+        ? 'Мост подключён. Для чтения актуального макета нажми «Подключить». Прежнее чтение нужно начать заново.' : message,
       tabId, fileKey, busy, readReady: connected && capture.state === 'ready',
-      capture: needsCapture ? { ...capture, message: `${capture.message} Нажми «Перезагрузить и захватить».` } : capture };
+      capture: needsCapture ? { ...capture, message: `${capture.message} Нажми «Подключить».` } : capture };
   };
   const saveSession = () => persist(() => chrome.storage.session.set({ connection: { tabId, fileKey, wanted: !stopped, exportUncertain } }));
   const targetFile = tab => /^https:\/\/www\.figma\.com\/(design|file)\/([^/?#]+)/.exec(tab?.url || '')?.[2];
@@ -48,11 +48,11 @@ export function createConnection(chrome, { WebSocket = globalThis.WebSocket, tim
       let ready = false;
       // Figma may retain its existing selection on same-file URL navigation.
       // Prefer selecting the exact linked ID through Layers when already mounted.
-      try { await invoke('select_node', { nodeId: target.nodeId, ...(method === 'get_screenshot' ? { ancestors: params.ancestors } : { mountedOnly: true }) }); ready = true; }
+      try { await invoke('select_node', { nodeId: target.nodeId, ...(Array.isArray(params.ancestors) ? { ancestors: params.ancestors } : { mountedOnly: true }) }); ready = true; }
       catch (error) {
         // Navigation destroys the observed snapshot. Screenshot selection must
         // succeed in the current document or fail without ending the capture.
-        if (method === 'get_screenshot') throw error;
+        if (method === 'get_screenshot' || Array.isArray(params.ancestors)) throw error;
         // Asset export retains its existing link navigation fallback.
       }
       if (!ready) {
@@ -64,12 +64,12 @@ export function createConnection(chrome, { WebSocket = globalThis.WebSocket, tim
         const until = Date.now() + 6000;
         while (Date.now() < until) {
           if (connection !== socket || connection.readyState !== WebSocket.OPEN) throw new Error('Connection closed.');
-          try { await invoke('select_node', { nodeId: target.nodeId, ...(method === 'get_screenshot' ? { ancestors: params.ancestors } : { mountedOnly: true }) }); ready = true; break; }
+          try { await invoke('select_node', { nodeId: target.nodeId, ...(Array.isArray(params.ancestors) ? { ancestors: params.ancestors } : { mountedOnly: true }) }); ready = true; break; }
           catch { /* Same-file navigation can briefly unload the document. */ }
           await new Promise(resolve => timers.setTimeout(resolve, 150));
         }
         if (!ready) {
-          try { await invoke('select_node', { nodeId: target.nodeId, ...(method === 'get_screenshot' ? { ancestors: params.ancestors } : {}) }); ready = true; } catch { /* Report the exact limitation. */ }
+          try { await invoke('select_node', { nodeId: target.nodeId, ...(Array.isArray(params.ancestors) ? { ancestors: params.ancestors } : {}) }); ready = true; } catch { /* Report the exact limitation. */ }
         }
       }
       if (!ready) throw new Error('Linked node is not available in Layers yet. Retry after the file loads; if its ancestors remain collapsed, retry with a fresh network capture.');
@@ -153,6 +153,7 @@ export function createConnection(chrome, { WebSocket = globalThis.WebSocket, tim
   async function stop() {
     rejectCache('Соединение закрыто. Результат операции с кэшем неизвестен.');
     stopped = true;
+    captureOnReady = false;
     timers.clearInterval(heartbeat);
     void chrome.alarms.clear("bridge-reconnect");
     connectionState('disconnected');
@@ -213,7 +214,20 @@ export function createConnection(chrome, { WebSocket = globalThis.WebSocket, tim
         connectionState('connected');
         const saved = { ...credentials };
         void persist(() => chrome.storage.local.set({ pairing: saved })).catch(() => {});
-        setStatus('Подключено к turbo-figma MCP. Ключ сохранён в этом браузере. Панель можно закрыть.');
+        setStatus('Подключено к turbo-figma MCP.');
+        if (captureOnReady) {
+          captureOnReady = false;
+          try {
+            if (!collector) throw new Error('Для чтения макета требуется разрешение debugger и Chrome 125+.');
+            const tab = await chrome.tabs.get(tabId);
+            if (connection !== socket || stopped) return;
+            if (targetFile(tab) !== fileKey) throw new Error('Вкладка Figma изменилась. Подключись заново.');
+            captureConnection = connection;
+            await collector.start({ tabId, fileKey, socket: connection, reload: true });
+          } catch (error) {
+            if (connection === socket && !stopped) setStatus(`Не удалось подготовить макет: ${error.message} Нажми «Подключить» для повтора.`);
+          }
+        }
         return;
       }
       if (msg.type !== 'request' || typeof msg.id !== 'string' || msg.id.length > 100) return;
@@ -274,7 +288,7 @@ export function createConnection(chrome, { WebSocket = globalThis.WebSocket, tim
         if (!file || !validCredentials(candidate)) throw new Error('Открой макет Figma и проверь порт и секрет.');
         await stop();
         if (tabId !== tab.id || fileKey !== file) exportUncertain = false;
-        tabId = tab.id; fileKey = file; credentials = candidate; attempt = 0; stopped = false;
+        tabId = tab.id; fileKey = file; credentials = candidate; attempt = 0; stopped = false; captureOnReady = true;
         await saveSession();
         await chrome.alarms.create('bridge-reconnect', { periodInMinutes: 1 });
         connect();

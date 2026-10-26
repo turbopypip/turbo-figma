@@ -8,4 +8,4 @@ pub(crate) mod traversal;
 pub(crate) mod variable_resolver;
 pub(crate) mod uikit;
 mod projection;
-pub(crate) use projection::project;
+pub(crate) use projection::{project, compact};

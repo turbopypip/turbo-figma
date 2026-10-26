@@ -151,7 +151,7 @@ test('connection routes capture into disk store and disconnect removes debugger 
   const wait=async predicate=>{const until=Date.now()+3000;while(!await predicate()){if(Date.now()>until)throw Error('Timeout');await new Promise(r=>setTimeout(r,5));}};
   await wait(async()=>(await connection.control({action:'status'})).state==='connected');
   assert.match((await connection.control({action:'capture-start',tabId:8})).error,/текущей/);
-  assert.equal((await connection.control({action:'capture-reload',tabId:7})).capture.state,'capturing');
+  await wait(async()=>(await connection.control({action:'status'})).capture.state==='capturing');
   await connection.tabChanged(7,{status:'loading'},{id:7,url:'https://www.figma.com/design/test/File'});
   await connection.tabChanged(7,{status:'loading'},{id:7,url:'https://www.figma.com/design/test/File'});
   assert.equal((await connection.control({action:'status'})).capture.state,'capturing');
@@ -177,8 +177,7 @@ test('connection routes capture into disk store and disconnect removes debugger 
   await wait(async()=>(await connection.control({action:'status'})).state==='connected');
   const recovered=await connection.control({action:'status'});
   assert.equal(recovered.readReady,false);
-  assert.match(recovered.message,/Перезагрузить и захватить/);
-  assert.match(recovered.capture.message,/Перезагрузить и захватить/);
+  await wait(async()=>(await connection.control({action:'status'})).capture.state==='capturing');
   assert.equal((await bridge.status()).readReady,false);
   // A fresh worker restores the bridge from storage, but has no observation.
   await connection.control({action:'disconnect'});
@@ -189,23 +188,21 @@ test('connection routes capture into disk store and disconnect removes debugger 
   await wait(async()=>(await restored.control({action:'status'})).state==='connected');
   const resumed=await restored.control({action:'status'});
   assert.equal(resumed.capture.state,'idle');assert.equal(resumed.readReady,false);
-  assert.match(resumed.message,/Перезагрузить и захватить/);
+  assert.match(resumed.message,/Подключить/);
 
 });
 
-test('capture popup routes explicit start/stop and describes experimental status and permission',async()=>{
+test('capture popup only displays status and has no capture controls or technical hints',async()=>{
   const vm=await import('node:vm');const {readFile}=await import('node:fs/promises');
-  const elements=Object.fromEntries(['capture-start','capture-reload','capture-stop','capture-status'].map(id=>[id,{listeners:{},addEventListener(name,fn){this.listeners[name]=fn;}}]));
-  const sent=[];let active=false,clear;
+  const status={};const sent=[];let close,cleared=false;
   vm.runInNewContext(await readFile('extension/network-popup.js','utf8'),{
-    document:{getElementById:id=>elements[id]},window:{addEventListener:(event,fn)=>{clear=fn;}},setInterval:()=>1,clearInterval(){},
-    chrome:{tabs:{query:async()=>[{id:7}]},runtime:{sendMessage:async msg=>{sent.push(msg);if(msg.action==='capture-start')active=true;if(msg.action==='capture-stop')active=false;
-      return {state:'connected',tabId:7,capture:{state:active?'capturing':'idle',message:active?'Неполный снимок':'Выключен'}};}}}});
-  await flush();assert.equal(elements['capture-start'].disabled,false);
-  await elements['capture-start'].listeners.click();assert.equal(sent.find(m=>m.action==='capture-start').tabId,7);
-  assert.equal(elements['capture-stop'].disabled,false);assert.equal(elements['capture-status'].textContent,'Неполный снимок');
-  await elements['capture-stop'].listeners.click();assert.equal(elements['capture-stop'].disabled,true);clear();
-  const html=await readFile('extension/popup.html','utf8');assert.match(html,/Chrome 125\+/);assert.match(html,/разрешение debugger/);assert.match(html,/не перезагружает/);
+    document:{getElementById:id=>{assert.equal(id,'capture-status');return status;}},
+    window:{addEventListener:(event,fn)=>{close=fn;}},setInterval:()=>1,clearInterval(){cleared=true;},
+    chrome:{runtime:{sendMessage:async msg=>{sent.push(msg);return {capture:{message:'Снимок сохранён'}};}}}});
+  await flush();assert.equal(status.textContent,'Снимок сохранён');assert.deepEqual(sent.map(m=>m.action),['status']);
+  close();assert.equal(cleared,true);
+  const html=await readFile('extension/popup.html','utf8');
+  assert.doesNotMatch(html,/id="capture-(start|reload|stop)"|id="cache-info"|Chrome 125|multiplayer/);
 });
 
 test('recovery reload is explicit; workers resume only after Network and recursive auto attach',async()=>{
@@ -220,7 +217,7 @@ test('recovery reload is explicit; workers resume only after Network and recursi
 
 test('initial deadline reports recovery instruction and detaches even when stream is absent',async()=>{
   let timeout;const f=fixture({collector:{timers:{setTimeout:fn=>{timeout=fn;return 1;},clearTimeout(){}}}});
-  await f.start();timeout();await flush();assert.equal(f.collector.status.state,'error');assert.match(f.collector.status.message,/Перезагрузить/);assert.equal(f.detaches.length,1);
+  await f.start();timeout();await flush();assert.equal(f.collector.status.state,'error');assert.match(f.collector.status.message,/Подключить/);assert.equal(f.detaches.length,1);
 });
 
 test('reload failure and unknown fragmentation do not finish a snapshot',async()=>{
