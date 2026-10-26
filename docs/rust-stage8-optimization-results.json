@@ -1,0 +1,2784 @@
+{
+  "version": 1,
+  "date": "2026-10-26",
+  "runId": "stage8-opt-benchmark-89IGTYP2FND1",
+  "baselineRunId": "stage8-benchmark-riTsCxpKJi6O",
+  "thresholds": {
+    "timePercent": 20,
+    "warmMinimumMs": 2,
+    "memoryPercent": 15,
+    "otherRegressionPercent": 5,
+    "fullColdPercent": 10
+  },
+  "metadata": {
+    "revision": "c33d83a2eab0f923d40bc65a16f4803c20f1fde8",
+    "node": "v20.12.2",
+    "os": "24.6.0",
+    "arch": "arm64",
+    "cpu": "Apple M1",
+    "binary": "a1b9536f106bff84394832a6118d07dce8895931febee0cda47189ec8d816b4c",
+    "oldBinary": "205cb926e3c7d270b555348dd21598b4a502b7f037f7089b436bd043e9824ea6",
+    "cargoLock": "c0ab84af7e6bb83c58546964d4640eb597ad06f026d7f3a929be9d093d82bafc"
+  },
+  "sourceHashes": {
+    "rust/helper/src/disk.rs": "0a14c17f929bae3f54311e5ff0047fdac83f326a8c7b4b74e104d7b9becf4670",
+    "rust/helper/src/json.rs": "b0e35658e1f2c6a6c066974d1b2bb0421e2d483eda46186df929bb612b95a329",
+    "rust/helper/src/stage8.rs": "72ded807cc5049dbce38cbf58e1f382c463c610a6e965d223dbdf887e4a5bc3e",
+    "rust/helper/src/wire.rs": "d234aa7920cfe6f9dc7c8329504650158260774474bb2531f385cecc631047ef",
+    "rust/helper/src/stage6.rs": "fdcc0caf9a4ddaa0eabd7953cd140ea9e13633b24c4971e5f3a333e28ed9ee8d",
+    "rust/helper/src/main.rs": "08c86022af755590e5b0b3281177d069152b2eee98ec3ee39cd0da6f0468ec3a",
+    "rust/helper/Cargo.toml": "356e103a6b2016b671a6ca30f214f7ccf6b1438ab61c583946f5f3859473913f",
+    "scripts/rust-helper/stage8-host.mjs": "61df74f7324dc6da1ba2be0ae1c5e5a8f319ab917733d5313bb0fdc52d917d64",
+    "scripts/rust-helper/stage8-driver.mjs": "dda05b1da29f990880984c15e6309b6544848ff1bd7eacc146f30f7c30cb383c",
+    "scripts/rust-helper/stage8-opt-measure.mjs": "9619564bdadd7b3a8bac22dd4f392bc0f1d16d6855bbb43ca9e7fc2fda443535",
+    "scripts/rust-helper/stage6-host.mjs": "efb94e6fe076998a773900d20c7e28d45a76c05526e9d032ece1173f6993eff2"
+  },
+  "successfulProcesses": 306,
+  "cases": [
+    {
+      "name": "real",
+      "rootId": "3215:21200",
+      "inputHashes": {
+        "manifest": "ef7430c2ffde89c81c57eb675d0db6cb5ba465bd669e5be2df4b176732522fa3",
+        "model": "9e466384216090eba0855a1052f81cad7853668136b95695e58c8b631cafe040"
+      },
+      "summary": {
+        "managed": {
+          "node": {
+            "loadMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 1395.3139375,
+              "p95": 1594.721291,
+              "max": 1717.9140830000001
+            },
+            "indexMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 597.776962999993,
+              "p95": 790.7513669999953,
+              "max": 804.350437000017
+            },
+            "queryMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 3.280228999999963,
+              "p95": 3.862999999999829,
+              "max": 4.063250000000153
+            },
+            "wallMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 1413.9671250000001,
+              "p95": 1609.9318329999999,
+              "max": 1742.038208
+            },
+            "cpuMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 1581.6825,
+              "p95": 1607.802,
+              "max": 1656.682
+            },
+            "sampledTotalRssBytes": {
+              "samples": 30,
+              "missing": 0,
+              "median": 157908992,
+              "p95": 162971648,
+              "max": 165560320
+            },
+            "scratchBytes": {
+              "samples": 30,
+              "missing": 0,
+              "median": 68205316,
+              "p95": 68205316,
+              "max": 68205316
+            },
+            "allocatedScratchBytes": {
+              "samples": 30,
+              "missing": 0,
+              "median": 67321856,
+              "p95": 68767744,
+              "max": 69156864
+            },
+            "nodeBytes": {
+              "samples": 30,
+              "missing": 0,
+              "median": 40733988,
+              "p95": 40733988,
+              "max": 40733988
+            },
+            "loadIo": {
+              "reads": 39685,
+              "readBytes": 1905632,
+              "writes": 98117,
+              "writeBytes": 44032820
+            },
+            "queryIo": {
+              "reads": 188,
+              "readBytes": 330180,
+              "writes": 0,
+              "writeBytes": 0
+            },
+            "cache": {
+              "nodes": 27,
+              "bytes": 328502
+            },
+            "releaseCache": {
+              "nodes": 0,
+              "bytes": 0
+            }
+          },
+          "rust-before": {
+            "loadMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 972.365646,
+              "p95": 1059.975292,
+              "max": 1126.629083
+            },
+            "indexMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 671.6118074999995,
+              "p95": 733.4071880000025,
+              "max": 787.2644330000052
+            },
+            "queryMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 4.150833,
+              "p95": 4.2909999999999995,
+              "max": 4.365667
+            },
+            "wallMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 998.0162085000001,
+              "p95": 1149.6027080000001,
+              "max": 1190.1973750000002
+            },
+            "cpuMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 986.3025,
+              "p95": 1035.048,
+              "max": 1045.2530000000002
+            },
+            "sampledTotalRssBytes": {
+              "samples": 30,
+              "missing": 0,
+              "median": 96231424,
+              "p95": 98844672,
+              "max": 99205120
+            },
+            "scratchBytes": {
+              "samples": 30,
+              "missing": 0,
+              "median": 68205316,
+              "p95": 68205316,
+              "max": 68205316
+            },
+            "allocatedScratchBytes": {
+              "samples": 30,
+              "missing": 0,
+              "median": 66719744,
+              "p95": 67637248,
+              "max": 67649536
+            },
+            "nodeBytes": {
+              "samples": 30,
+              "missing": 0,
+              "median": 40733988,
+              "p95": 40733988,
+              "max": 40733988
+            },
+            "loadIo": {
+              "readBytes": 1905632,
+              "reads": 39685,
+              "writeBytes": 44032820,
+              "writes": 98117
+            },
+            "queryIo": {
+              "reads": 162,
+              "readBytes": 328932,
+              "writes": 0,
+              "writeBytes": 0
+            },
+            "cache": {
+              "bytes": 328502,
+              "nodes": 27
+            },
+            "releaseCache": {
+              "bytes": 0,
+              "nodes": 0
+            }
+          },
+          "rust": {
+            "loadMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 977.0090625,
+              "p95": 1028.6243749999999,
+              "max": 1141.231584
+            },
+            "indexMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 676.0413669999987,
+              "p95": 723.9645990000002,
+              "max": 833.6009530000031
+            },
+            "queryMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 1.740458,
+              "p95": 2.142792,
+              "max": 2.1532500000000003
+            },
+            "wallMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 1001.6458124999999,
+              "p95": 1057.148541,
+              "max": 1159.503542
+            },
+            "cpuMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 990.5685,
+              "p95": 999.591,
+              "max": 1021.1
+            },
+            "sampledTotalRssBytes": {
+              "samples": 30,
+              "missing": 0,
+              "median": 96829440,
+              "p95": 98287616,
+              "max": 99008512
+            },
+            "scratchBytes": {
+              "samples": 30,
+              "missing": 0,
+              "median": 68246353,
+              "p95": 68246353,
+              "max": 68246353
+            },
+            "allocatedScratchBytes": {
+              "samples": 30,
+              "missing": 0,
+              "median": 66760704,
+              "p95": 67719168,
+              "max": 68820992
+            },
+            "nodeBytes": {
+              "samples": 30,
+              "missing": 0,
+              "median": 40733988,
+              "p95": 40733988,
+              "max": 40733988
+            },
+            "loadIo": {
+              "readBytes": 1905632,
+              "reads": 39685,
+              "writeBytes": 44073857,
+              "writes": 98117
+            },
+            "queryIo": {
+              "reads": 136,
+              "readBytes": 166066,
+              "writes": 0,
+              "writeBytes": 0
+            },
+            "cache": {
+              "bytes": 3908122,
+              "nodes": 25
+            },
+            "releaseCache": {
+              "bytes": 0,
+              "nodes": 0
+            }
+          }
+        },
+        "warm": {
+          "node": {
+            "loadMs": {
+              "samples": 3,
+              "missing": 0,
+              "median": 1415.6075409999999,
+              "p95": 1515.9401659999999,
+              "max": 1515.9401659999999
+            },
+            "indexMs": {
+              "samples": 3,
+              "missing": 0,
+              "median": 612.529086000003,
+              "p95": 670.7717460000163,
+              "max": 670.7717460000163
+            },
+            "queryMs": {
+              "samples": 300,
+              "missing": 0,
+              "median": 2.0089585000000625,
+              "p95": 3.685707999999977,
+              "max": 14.905874999999924
+            },
+            "wallMs": {
+              "samples": 3,
+              "missing": 0,
+              "median": 1696.753584,
+              "p95": 1931.929083,
+              "max": 1931.929083
+            },
+            "cpuMs": {
+              "samples": 3,
+              "missing": 0,
+              "median": 1874.84,
+              "p95": 1992.655,
+              "max": 1992.655
+            },
+            "sampledTotalRssBytes": {
+              "samples": 3,
+              "missing": 0,
+              "median": 173277184,
+              "p95": 177307648,
+              "max": 177307648
+            },
+            "scratchBytes": {
+              "samples": 3,
+              "missing": 0,
+              "median": 68205316,
+              "p95": 68205316,
+              "max": 68205316
+            },
+            "allocatedScratchBytes": {
+              "samples": 3,
+              "missing": 0,
+              "median": 66826240,
+              "p95": 67604480,
+              "max": 67604480
+            },
+            "nodeBytes": {
+              "samples": 3,
+              "missing": 0,
+              "median": 40733988,
+              "p95": 40733988,
+              "max": 40733988
+            },
+            "loadIo": {
+              "reads": 39685,
+              "readBytes": 1905632,
+              "writes": 98117,
+              "writeBytes": 44032820
+            },
+            "queryIo": {
+              "reads": 188,
+              "readBytes": 330180,
+              "writes": 0,
+              "writeBytes": 0
+            },
+            "cache": {
+              "nodes": 27,
+              "bytes": 328502
+            },
+            "releaseCache": {
+              "nodes": 0,
+              "bytes": 0
+            }
+          },
+          "rust-before": {
+            "loadMs": {
+              "samples": 3,
+              "missing": 0,
+              "median": 1001.5710829999999,
+              "p95": 1024.096333,
+              "max": 1024.096333
+            },
+            "indexMs": {
+              "samples": 3,
+              "missing": 0,
+              "median": 684.2094830000029,
+              "p95": 704.0696880000003,
+              "max": 704.0696880000003
+            },
+            "queryMs": {
+              "samples": 300,
+              "missing": 0,
+              "median": 3.8112915,
+              "p95": 4.261333,
+              "max": 9.529667
+            },
+            "wallMs": {
+              "samples": 3,
+              "missing": 0,
+              "median": 1487.766625,
+              "p95": 1526.454833,
+              "max": 1526.454833
+            },
+            "cpuMs": {
+              "samples": 3,
+              "missing": 0,
+              "median": 1553.161,
+              "p95": 1578.62,
+              "max": 1578.62
+            },
+            "sampledTotalRssBytes": {
+              "samples": 3,
+              "missing": 0,
+              "median": 112148480,
+              "p95": 113770496,
+              "max": 113770496
+            },
+            "scratchBytes": {
+              "samples": 3,
+              "missing": 0,
+              "median": 68205316,
+              "p95": 68205316,
+              "max": 68205316
+            },
+            "allocatedScratchBytes": {
+              "samples": 3,
+              "missing": 0,
+              "median": 66924544,
+              "p95": 67731456,
+              "max": 67731456
+            },
+            "nodeBytes": {
+              "samples": 3,
+              "missing": 0,
+              "median": 40733988,
+              "p95": 40733988,
+              "max": 40733988
+            },
+            "loadIo": {
+              "readBytes": 1905632,
+              "reads": 39685,
+              "writeBytes": 44032820,
+              "writes": 98117
+            },
+            "queryIo": {
+              "reads": 162,
+              "readBytes": 328932,
+              "writes": 0,
+              "writeBytes": 0
+            },
+            "cache": {
+              "bytes": 328502,
+              "nodes": 27
+            },
+            "releaseCache": {
+              "bytes": 0,
+              "nodes": 0
+            }
+          },
+          "rust": {
+            "loadMs": {
+              "samples": 3,
+              "missing": 0,
+              "median": 972.9707920000001,
+              "p95": 978.07975,
+              "max": 978.07975
+            },
+            "indexMs": {
+              "samples": 3,
+              "missing": 0,
+              "median": 669.7459029999987,
+              "p95": 675.132454,
+              "max": 675.132454
+            },
+            "queryMs": {
+              "samples": 300,
+              "missing": 0,
+              "median": 0.6615005,
+              "p95": 0.7879999999999999,
+              "max": 4.644541
+            },
+            "wallMs": {
+              "samples": 3,
+              "missing": 0,
+              "median": 1098.4082500000002,
+              "p95": 1122.510792,
+              "max": 1122.510792
+            },
+            "cpuMs": {
+              "samples": 3,
+              "missing": 0,
+              "median": 1165.829,
+              "p95": 1174.323,
+              "max": 1174.323
+            },
+            "sampledTotalRssBytes": {
+              "samples": 3,
+              "missing": 0,
+              "median": 112885760,
+              "p95": 113672192,
+              "max": 113672192
+            },
+            "scratchBytes": {
+              "samples": 3,
+              "missing": 0,
+              "median": 68246353,
+              "p95": 68246353,
+              "max": 68246353
+            },
+            "allocatedScratchBytes": {
+              "samples": 3,
+              "missing": 0,
+              "median": 66760704,
+              "p95": 66760704,
+              "max": 66760704
+            },
+            "nodeBytes": {
+              "samples": 3,
+              "missing": 0,
+              "median": 40733988,
+              "p95": 40733988,
+              "max": 40733988
+            },
+            "loadIo": {
+              "readBytes": 1905632,
+              "reads": 39685,
+              "writeBytes": 44073857,
+              "writes": 98117
+            },
+            "queryIo": {
+              "reads": 136,
+              "readBytes": 166066,
+              "writes": 0,
+              "writeBytes": 0
+            },
+            "cache": {
+              "bytes": 3908122,
+              "nodes": 25
+            },
+            "releaseCache": {
+              "bytes": 0,
+              "nodes": 0
+            }
+          }
+        },
+        "churn": {
+          "node": {
+            "loadMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 1391.4654580000001,
+              "p95": 1391.4654580000001,
+              "max": 1391.4654580000001
+            },
+            "indexMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 590.112091999991,
+              "p95": 590.112091999991,
+              "max": 590.112091999991
+            },
+            "queryMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 3.1716670000000704,
+              "p95": 3.1716670000000704,
+              "max": 3.1716670000000704
+            },
+            "wallMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 1541.858417,
+              "p95": 1541.858417,
+              "max": 1541.858417
+            },
+            "cpuMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 1742.853,
+              "p95": 1742.853,
+              "max": 1742.853
+            },
+            "sampledTotalRssBytes": {
+              "samples": 1,
+              "missing": 0,
+              "median": 189251584,
+              "p95": 189251584,
+              "max": 189251584
+            },
+            "scratchBytes": {
+              "samples": 1,
+              "missing": 0,
+              "median": 68205316,
+              "p95": 68205316,
+              "max": 68205316
+            },
+            "allocatedScratchBytes": {
+              "samples": 1,
+              "missing": 0,
+              "median": 67551232,
+              "p95": 67551232,
+              "max": 67551232
+            },
+            "nodeBytes": {
+              "samples": 1,
+              "missing": 0,
+              "median": 40733988,
+              "p95": 40733988,
+              "max": 40733988
+            },
+            "loadIo": {
+              "reads": 39685,
+              "readBytes": 1905632,
+              "writes": 98117,
+              "writeBytes": 44032820
+            },
+            "queryIo": {
+              "reads": 188,
+              "readBytes": 330180,
+              "writes": 0,
+              "writeBytes": 0
+            },
+            "cache": {
+              "nodes": 27,
+              "bytes": 328502
+            },
+            "releaseCache": {
+              "nodes": 0,
+              "bytes": 0
+            }
+          },
+          "rust-before": {
+            "loadMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 976.717375,
+              "p95": 976.717375,
+              "max": 976.717375
+            },
+            "indexMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 673.7589659999991,
+              "p95": 673.7589659999991,
+              "max": 673.7589659999991
+            },
+            "queryMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 3.274708,
+              "p95": 3.274708,
+              "max": 3.274708
+            },
+            "wallMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 1170.331083,
+              "p95": 1170.331083,
+              "max": 1170.331083
+            },
+            "cpuMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 1198.623,
+              "p95": 1198.623,
+              "max": 1198.623
+            },
+            "sampledTotalRssBytes": {
+              "samples": 1,
+              "missing": 0,
+              "median": 103710720,
+              "p95": 103710720,
+              "max": 103710720
+            },
+            "scratchBytes": {
+              "samples": 1,
+              "missing": 0,
+              "median": 68205316,
+              "p95": 68205316,
+              "max": 68205316
+            },
+            "allocatedScratchBytes": {
+              "samples": 1,
+              "missing": 0,
+              "median": 66719744,
+              "p95": 66719744,
+              "max": 66719744
+            },
+            "nodeBytes": {
+              "samples": 1,
+              "missing": 0,
+              "median": 40733988,
+              "p95": 40733988,
+              "max": 40733988
+            },
+            "loadIo": {
+              "readBytes": 1905632,
+              "reads": 39685,
+              "writeBytes": 44032820,
+              "writes": 98117
+            },
+            "queryIo": {
+              "reads": 162,
+              "readBytes": 328932,
+              "writes": 0,
+              "writeBytes": 0
+            },
+            "cache": {
+              "bytes": 328502,
+              "nodes": 27
+            },
+            "releaseCache": {
+              "bytes": 0,
+              "nodes": 0
+            }
+          },
+          "rust": {
+            "loadMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 993.753542,
+              "p95": 993.753542,
+              "max": 993.753542
+            },
+            "indexMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 689.5805190000003,
+              "p95": 689.5805190000003,
+              "max": 689.5805190000003
+            },
+            "queryMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 1.4131669999999998,
+              "p95": 1.4131669999999998,
+              "max": 1.4131669999999998
+            },
+            "wallMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 1129.169625,
+              "p95": 1129.169625,
+              "max": 1129.169625
+            },
+            "cpuMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 1135.678,
+              "p95": 1135.678,
+              "max": 1135.678
+            },
+            "sampledTotalRssBytes": {
+              "samples": 1,
+              "missing": 0,
+              "median": 105447424,
+              "p95": 105447424,
+              "max": 105447424
+            },
+            "scratchBytes": {
+              "samples": 1,
+              "missing": 0,
+              "median": 68246353,
+              "p95": 68246353,
+              "max": 68246353
+            },
+            "allocatedScratchBytes": {
+              "samples": 1,
+              "missing": 0,
+              "median": 66760704,
+              "p95": 66760704,
+              "max": 66760704
+            },
+            "nodeBytes": {
+              "samples": 1,
+              "missing": 0,
+              "median": 40733988,
+              "p95": 40733988,
+              "max": 40733988
+            },
+            "loadIo": {
+              "readBytes": 1905632,
+              "reads": 39685,
+              "writeBytes": 44073857,
+              "writes": 98117
+            },
+            "queryIo": {
+              "reads": 136,
+              "readBytes": 166066,
+              "writes": 0,
+              "writeBytes": 0
+            },
+            "cache": {
+              "bytes": 3908122,
+              "nodes": 25
+            },
+            "releaseCache": {
+              "bytes": 0,
+              "nodes": 0
+            }
+          }
+        }
+      },
+      "warmIo": {
+        "node": {
+          "reads": 82,
+          "readBytes": 3585,
+          "writes": 0,
+          "writeBytes": 0
+        },
+        "rust-before": {
+          "readBytes": 2337,
+          "reads": 56,
+          "writeBytes": 0,
+          "writes": 0
+        },
+        "rust": {
+          "readBytes": 29064,
+          "reads": 86,
+          "writeBytes": 0,
+          "writes": 0
+        }
+      },
+      "churn": {
+        "node": [
+          {
+            "command": 50,
+            "cache": {
+              "nodes": 1,
+              "bytes": 8346
+            },
+            "metrics": {
+              "rssBytes": 176062464
+            }
+          },
+          {
+            "command": 100,
+            "cache": {
+              "nodes": 1,
+              "bytes": 8346
+            },
+            "metrics": {
+              "rssBytes": 189251584
+            }
+          },
+          {
+            "command": 101,
+            "cache": {
+              "nodes": 0,
+              "bytes": 0
+            },
+            "metrics": {
+              "rssBytes": 189251584
+            }
+          }
+        ],
+        "rust-before": [
+          {
+            "command": 50,
+            "cache": {
+              "bytes": 8346,
+              "nodes": 1
+            },
+            "metrics": {
+              "cpuMs": 1060.988,
+              "maxRssBytes": 43089920
+            }
+          },
+          {
+            "command": 100,
+            "cache": {
+              "bytes": 8346,
+              "nodes": 1
+            },
+            "metrics": {
+              "cpuMs": 1149.221,
+              "maxRssBytes": 43089920
+            }
+          },
+          {
+            "command": 101,
+            "cache": {
+              "bytes": 0,
+              "nodes": 0
+            },
+            "metrics": {
+              "cpuMs": 1149.271,
+              "maxRssBytes": 43089920
+            }
+          }
+        ],
+        "rust": [
+          {
+            "command": 50,
+            "cache": {
+              "bytes": 82081,
+              "nodes": 1
+            },
+            "metrics": {
+              "cpuMs": 1035.045,
+              "maxRssBytes": 44367872
+            }
+          },
+          {
+            "command": 100,
+            "cache": {
+              "bytes": 82081,
+              "nodes": 1
+            },
+            "metrics": {
+              "cpuMs": 1093.343,
+              "maxRssBytes": 44482560
+            }
+          },
+          {
+            "command": 101,
+            "cache": {
+              "bytes": 0,
+              "nodes": 0
+            },
+            "metrics": {
+              "cpuMs": 1093.41,
+              "maxRssBytes": 44482560
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "typical",
+      "rootId": "1:1",
+      "inputHashes": {
+        "manifest": "30f202f62631d3ae803c1b6ad9d6ea3dd5bdd5632465529ac26ded4e561968aa",
+        "model": "0a7a9cd9203b4e32becfbe8c3cbeb4967eda1f8cbb1084b26790e54ddd999fa5"
+      },
+      "summary": {
+        "managed": {
+          "node": {
+            "loadMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 43.670021,
+              "p95": 53.98629199999999,
+              "max": 70.92537499999999
+            },
+            "indexMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 29.42170849999998,
+              "p95": 39.55667599999984,
+              "max": 51.53763699999996
+            },
+            "queryMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 16.1252085,
+              "p95": 17.523291,
+              "max": 17.775667
+            },
+            "wallMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 73.12868749999998,
+              "p95": 94.44845799999999,
+              "max": 104.11508300000001
+            },
+            "cpuMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 149.223,
+              "p95": 166.086,
+              "max": 191.517
+            },
+            "sampledTotalRssBytes": {
+              "samples": 30,
+              "missing": 0,
+              "median": 73703424,
+              "p95": 74973184,
+              "max": 75137024
+            },
+            "scratchBytes": {
+              "samples": 30,
+              "missing": 0,
+              "median": 27263449,
+              "p95": 27263449,
+              "max": 27263449
+            },
+            "allocatedScratchBytes": {
+              "samples": 30,
+              "missing": 0,
+              "median": 25432064,
+              "p95": 25432064,
+              "max": 25432064
+            },
+            "nodeBytes": {
+              "samples": 30,
+              "missing": 0,
+              "median": 238641,
+              "p95": 238641,
+              "max": 238641
+            },
+            "loadIo": {
+              "reads": 1999,
+              "readBytes": 95952,
+              "writes": 4998,
+              "writeBytes": 406569
+            },
+            "queryIo": {
+              "reads": 6996,
+              "readBytes": 693002,
+              "writes": 0,
+              "writeBytes": 0
+            },
+            "cache": {
+              "nodes": 1000,
+              "bytes": 615068
+            },
+            "releaseCache": {
+              "nodes": 0,
+              "bytes": 0
+            }
+          },
+          "rust-before": {
+            "loadMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 16.1839375,
+              "p95": 30.129791,
+              "max": 35.175166
+            },
+            "indexMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 14.604839499999965,
+              "p95": 28.570402000000044,
+              "max": 32.049943000000056
+            },
+            "queryMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 9.124,
+              "p95": 10.147458,
+              "max": 10.325584000000001
+            },
+            "wallMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 42.1351045,
+              "p95": 73.160042,
+              "max": 101.51016700000001
+            },
+            "cpuMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 42.1385,
+              "p95": 52.332,
+              "max": 55.291000000000004
+            },
+            "sampledTotalRssBytes": {
+              "samples": 30,
+              "missing": 0,
+              "median": 56541184,
+              "p95": 58818560,
+              "max": 59965440
+            },
+            "scratchBytes": {
+              "samples": 30,
+              "missing": 0,
+              "median": 27263449,
+              "p95": 27263449,
+              "max": 27263449
+            },
+            "allocatedScratchBytes": {
+              "samples": 30,
+              "missing": 0,
+              "median": 25432064,
+              "p95": 25432064,
+              "max": 25432064
+            },
+            "nodeBytes": {
+              "samples": 30,
+              "missing": 0,
+              "median": 238641,
+              "p95": 238641,
+              "max": 238641
+            },
+            "loadIo": {
+              "readBytes": 95952,
+              "reads": 1999,
+              "writeBytes": 406569,
+              "writes": 4998
+            },
+            "queryIo": {
+              "reads": 5997,
+              "readBytes": 645050,
+              "writes": 0,
+              "writeBytes": 0
+            },
+            "cache": {
+              "bytes": 615068,
+              "nodes": 1000
+            },
+            "releaseCache": {
+              "bytes": 0,
+              "nodes": 0
+            }
+          },
+          "rust": {
+            "loadMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 16.304083499999997,
+              "p95": 22.99425,
+              "max": 23.377625
+            },
+            "indexMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 14.758861999999967,
+              "p95": 21.39990800000006,
+              "max": 21.700706000000004
+            },
+            "queryMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 5.2233125000000005,
+              "p95": 5.979375,
+              "max": 5.985833
+            },
+            "wallMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 39.656354,
+              "p95": 53.84070800000001,
+              "max": 91.06312499999999
+            },
+            "cpuMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 40.0085,
+              "p95": 49.434000000000005,
+              "max": 50.474
+            },
+            "sampledTotalRssBytes": {
+              "samples": 30,
+              "missing": 0,
+              "median": 60178432,
+              "p95": 62341120,
+              "max": 62914560
+            },
+            "scratchBytes": {
+              "samples": 30,
+              "missing": 0,
+              "median": 27271441,
+              "p95": 27271441,
+              "max": 27271441
+            },
+            "allocatedScratchBytes": {
+              "samples": 30,
+              "missing": 0,
+              "median": 25440256,
+              "p95": 25440256,
+              "max": 25440256
+            },
+            "nodeBytes": {
+              "samples": 30,
+              "missing": 0,
+              "median": 238641,
+              "p95": 238641,
+              "max": 238641
+            },
+            "loadIo": {
+              "readBytes": 95952,
+              "reads": 1999,
+              "writeBytes": 414561,
+              "writes": 4998
+            },
+            "queryIo": {
+              "reads": 4998,
+              "readBytes": 366609,
+              "writes": 0,
+              "writeBytes": 0
+            },
+            "cache": {
+              "bytes": 4141203,
+              "nodes": 1000
+            },
+            "releaseCache": {
+              "bytes": 0,
+              "nodes": 0
+            }
+          }
+        },
+        "warm": {
+          "node": {
+            "loadMs": {
+              "samples": 3,
+              "missing": 0,
+              "median": 42.004042000000005,
+              "p95": 43.129041,
+              "max": 43.129041
+            },
+            "indexMs": {
+              "samples": 3,
+              "missing": 0,
+              "median": 28.238735999999847,
+              "p95": 28.808947000000067,
+              "max": 28.808947000000067
+            },
+            "queryMs": {
+              "samples": 300,
+              "missing": 0,
+              "median": 6.522436999999968,
+              "p95": 7.0634169999999585,
+              "max": 7.762124999999969
+            },
+            "wallMs": {
+              "samples": 3,
+              "missing": 0,
+              "median": 838.827583,
+              "p95": 849.41975,
+              "max": 849.41975
+            },
+            "cpuMs": {
+              "samples": 3,
+              "missing": 0,
+              "median": 998.566,
+              "p95": 1021.431,
+              "max": 1021.431
+            },
+            "sampledTotalRssBytes": {
+              "samples": 3,
+              "missing": 0,
+              "median": 84361216,
+              "p95": 85917696,
+              "max": 85917696
+            },
+            "scratchBytes": {
+              "samples": 3,
+              "missing": 0,
+              "median": 27263449,
+              "p95": 27263449,
+              "max": 27263449
+            },
+            "allocatedScratchBytes": {
+              "samples": 3,
+              "missing": 0,
+              "median": 25432064,
+              "p95": 25432064,
+              "max": 25432064
+            },
+            "nodeBytes": {
+              "samples": 3,
+              "missing": 0,
+              "median": 238641,
+              "p95": 238641,
+              "max": 238641
+            },
+            "loadIo": {
+              "reads": 1999,
+              "readBytes": 95952,
+              "writes": 4998,
+              "writeBytes": 406569
+            },
+            "queryIo": {
+              "reads": 6996,
+              "readBytes": 693002,
+              "writes": 0,
+              "writeBytes": 0
+            },
+            "cache": {
+              "nodes": 1000,
+              "bytes": 615068
+            },
+            "releaseCache": {
+              "nodes": 0,
+              "bytes": 0
+            }
+          },
+          "rust-before": {
+            "loadMs": {
+              "samples": 3,
+              "missing": 0,
+              "median": 15.951333000000002,
+              "p95": 16.139875,
+              "max": 16.139875
+            },
+            "indexMs": {
+              "samples": 3,
+              "missing": 0,
+              "median": 14.428329999999972,
+              "p95": 14.61003999999997,
+              "max": 14.61003999999997
+            },
+            "queryMs": {
+              "samples": 300,
+              "missing": 0,
+              "median": 5.757958500000001,
+              "p95": 6.241625,
+              "max": 13.102459
+            },
+            "wallMs": {
+              "samples": 3,
+              "missing": 0,
+              "median": 700.412375,
+              "p95": 717.70125,
+              "max": 717.70125
+            },
+            "cpuMs": {
+              "samples": 3,
+              "missing": 0,
+              "median": 794.664,
+              "p95": 803.135,
+              "max": 803.135
+            },
+            "sampledTotalRssBytes": {
+              "samples": 3,
+              "missing": 0,
+              "median": 75776000,
+              "p95": 76972032,
+              "max": 76972032
+            },
+            "scratchBytes": {
+              "samples": 3,
+              "missing": 0,
+              "median": 27263449,
+              "p95": 27263449,
+              "max": 27263449
+            },
+            "allocatedScratchBytes": {
+              "samples": 3,
+              "missing": 0,
+              "median": 25432064,
+              "p95": 25432064,
+              "max": 25432064
+            },
+            "nodeBytes": {
+              "samples": 3,
+              "missing": 0,
+              "median": 238641,
+              "p95": 238641,
+              "max": 238641
+            },
+            "loadIo": {
+              "readBytes": 95952,
+              "reads": 1999,
+              "writeBytes": 406569,
+              "writes": 4998
+            },
+            "queryIo": {
+              "reads": 5997,
+              "readBytes": 645050,
+              "writes": 0,
+              "writeBytes": 0
+            },
+            "cache": {
+              "bytes": 615068,
+              "nodes": 1000
+            },
+            "releaseCache": {
+              "bytes": 0,
+              "nodes": 0
+            }
+          },
+          "rust": {
+            "loadMs": {
+              "samples": 3,
+              "missing": 0,
+              "median": 16.333582999999997,
+              "p95": 16.413292,
+              "max": 16.413292
+            },
+            "indexMs": {
+              "samples": 3,
+              "missing": 0,
+              "median": 14.74660499999998,
+              "p95": 14.88163899999995,
+              "max": 14.88163899999995
+            },
+            "queryMs": {
+              "samples": 300,
+              "missing": 0,
+              "median": 2.3808745,
+              "p95": 2.59225,
+              "max": 3.243292
+            },
+            "wallMs": {
+              "samples": 3,
+              "missing": 0,
+              "median": 330.662333,
+              "p95": 332.950584,
+              "max": 332.950584
+            },
+            "cpuMs": {
+              "samples": 3,
+              "missing": 0,
+              "median": 417.189,
+              "p95": 420.145,
+              "max": 420.145
+            },
+            "sampledTotalRssBytes": {
+              "samples": 3,
+              "missing": 0,
+              "median": 78512128,
+              "p95": 78544896,
+              "max": 78544896
+            },
+            "scratchBytes": {
+              "samples": 3,
+              "missing": 0,
+              "median": 27271441,
+              "p95": 27271441,
+              "max": 27271441
+            },
+            "allocatedScratchBytes": {
+              "samples": 3,
+              "missing": 0,
+              "median": 25440256,
+              "p95": 25440256,
+              "max": 25440256
+            },
+            "nodeBytes": {
+              "samples": 3,
+              "missing": 0,
+              "median": 238641,
+              "p95": 238641,
+              "max": 238641
+            },
+            "loadIo": {
+              "readBytes": 95952,
+              "reads": 1999,
+              "writeBytes": 414561,
+              "writes": 4998
+            },
+            "queryIo": {
+              "reads": 4998,
+              "readBytes": 366609,
+              "writes": 0,
+              "writeBytes": 0
+            },
+            "cache": {
+              "bytes": 4141203,
+              "nodes": 1000
+            },
+            "releaseCache": {
+              "bytes": 0,
+              "nodes": 0
+            }
+          }
+        },
+        "churn": {
+          "node": {
+            "loadMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 42.058542,
+              "p95": 42.058542,
+              "max": 42.058542
+            },
+            "indexMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 29.241022999999835,
+              "p95": 29.241022999999835,
+              "max": 29.241022999999835
+            },
+            "queryMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 16.04254200000001,
+              "p95": 16.04254200000001,
+              "max": 16.04254200000001
+            },
+            "wallMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 935.2415420000001,
+              "p95": 935.2415420000001,
+              "max": 935.2415420000001
+            },
+            "cpuMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 1133.113,
+              "p95": 1133.113,
+              "max": 1133.113
+            },
+            "sampledTotalRssBytes": {
+              "samples": 1,
+              "missing": 0,
+              "median": 128335872,
+              "p95": 128335872,
+              "max": 128335872
+            },
+            "scratchBytes": {
+              "samples": 1,
+              "missing": 0,
+              "median": 27263449,
+              "p95": 27263449,
+              "max": 27263449
+            },
+            "allocatedScratchBytes": {
+              "samples": 1,
+              "missing": 0,
+              "median": 25432064,
+              "p95": 25432064,
+              "max": 25432064
+            },
+            "nodeBytes": {
+              "samples": 1,
+              "missing": 0,
+              "median": 238641,
+              "p95": 238641,
+              "max": 238641
+            },
+            "loadIo": {
+              "reads": 1999,
+              "readBytes": 95952,
+              "writes": 4998,
+              "writeBytes": 406569
+            },
+            "queryIo": {
+              "reads": 6996,
+              "readBytes": 693002,
+              "writes": 0,
+              "writeBytes": 0
+            },
+            "cache": {
+              "nodes": 1000,
+              "bytes": 615068
+            },
+            "releaseCache": {
+              "nodes": 0,
+              "bytes": 0
+            }
+          },
+          "rust-before": {
+            "loadMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 16.712792,
+              "p95": 16.712792,
+              "max": 16.712792
+            },
+            "indexMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 15.121500999999979,
+              "p95": 15.121500999999979,
+              "max": 15.121500999999979
+            },
+            "queryMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 8.584208,
+              "p95": 8.584208,
+              "max": 8.584208
+            },
+            "wallMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 649.4752080000001,
+              "p95": 649.4752080000001,
+              "max": 649.4752080000001
+            },
+            "cpuMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 660.816,
+              "p95": 660.816,
+              "max": 660.816
+            },
+            "sampledTotalRssBytes": {
+              "samples": 1,
+              "missing": 0,
+              "median": 62816256,
+              "p95": 62816256,
+              "max": 62816256
+            },
+            "scratchBytes": {
+              "samples": 1,
+              "missing": 0,
+              "median": 27263449,
+              "p95": 27263449,
+              "max": 27263449
+            },
+            "allocatedScratchBytes": {
+              "samples": 1,
+              "missing": 0,
+              "median": 25432064,
+              "p95": 25432064,
+              "max": 25432064
+            },
+            "nodeBytes": {
+              "samples": 1,
+              "missing": 0,
+              "median": 238641,
+              "p95": 238641,
+              "max": 238641
+            },
+            "loadIo": {
+              "readBytes": 95952,
+              "reads": 1999,
+              "writeBytes": 406569,
+              "writes": 4998
+            },
+            "queryIo": {
+              "reads": 5997,
+              "readBytes": 645050,
+              "writes": 0,
+              "writeBytes": 0
+            },
+            "cache": {
+              "bytes": 615068,
+              "nodes": 1000
+            },
+            "releaseCache": {
+              "bytes": 0,
+              "nodes": 0
+            }
+          },
+          "rust": {
+            "loadMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 16.172208,
+              "p95": 16.172208,
+              "max": 16.172208
+            },
+            "indexMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 14.644972999999963,
+              "p95": 14.644972999999963,
+              "max": 14.644972999999963
+            },
+            "queryMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 4.823417,
+              "p95": 4.823417,
+              "max": 4.823417
+            },
+            "wallMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 483.198792,
+              "p95": 483.198792,
+              "max": 483.198792
+            },
+            "cpuMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 504.287,
+              "p95": 504.287,
+              "max": 504.287
+            },
+            "sampledTotalRssBytes": {
+              "samples": 1,
+              "missing": 0,
+              "median": 68845568,
+              "p95": 68845568,
+              "max": 68845568
+            },
+            "scratchBytes": {
+              "samples": 1,
+              "missing": 0,
+              "median": 27271441,
+              "p95": 27271441,
+              "max": 27271441
+            },
+            "allocatedScratchBytes": {
+              "samples": 1,
+              "missing": 0,
+              "median": 25440256,
+              "p95": 25440256,
+              "max": 25440256
+            },
+            "nodeBytes": {
+              "samples": 1,
+              "missing": 0,
+              "median": 238641,
+              "p95": 238641,
+              "max": 238641
+            },
+            "loadIo": {
+              "readBytes": 95952,
+              "reads": 1999,
+              "writeBytes": 414561,
+              "writes": 4998
+            },
+            "queryIo": {
+              "reads": 4998,
+              "readBytes": 366609,
+              "writes": 0,
+              "writeBytes": 0
+            },
+            "cache": {
+              "bytes": 4141203,
+              "nodes": 1000
+            },
+            "releaseCache": {
+              "bytes": 0,
+              "nodes": 0
+            }
+          }
+        }
+      },
+      "warmIo": {
+        "node": {
+          "reads": 2998,
+          "readBytes": 119928,
+          "writes": 0,
+          "writeBytes": 0
+        },
+        "rust-before": {
+          "readBytes": 71976,
+          "reads": 1999,
+          "writeBytes": 0,
+          "writes": 0
+        },
+        "rust": {
+          "readBytes": 79968,
+          "reads": 2998,
+          "writeBytes": 0,
+          "writes": 0
+        }
+      },
+      "churn": {
+        "node": [
+          {
+            "command": 50,
+            "cache": {
+              "nodes": 488,
+              "bytes": 300552
+            },
+            "metrics": {
+              "rssBytes": 115376128
+            }
+          },
+          {
+            "command": 100,
+            "cache": {
+              "nodes": 488,
+              "bytes": 300552
+            },
+            "metrics": {
+              "rssBytes": 128335872
+            }
+          },
+          {
+            "command": 101,
+            "cache": {
+              "nodes": 0,
+              "bytes": 0
+            },
+            "metrics": {
+              "rssBytes": 128335872
+            }
+          }
+        ],
+        "rust-before": [
+          {
+            "command": 50,
+            "cache": {
+              "bytes": 300552,
+              "nodes": 488
+            },
+            "metrics": {
+              "cpuMs": 327.772,
+              "maxRssBytes": 4734976
+            }
+          },
+          {
+            "command": 100,
+            "cache": {
+              "bytes": 300552,
+              "nodes": 488
+            },
+            "metrics": {
+              "cpuMs": 635.565,
+              "maxRssBytes": 4767744
+            }
+          },
+          {
+            "command": 101,
+            "cache": {
+              "bytes": 0,
+              "nodes": 0
+            },
+            "metrics": {
+              "cpuMs": 635.62,
+              "maxRssBytes": 4767744
+            }
+          }
+        ],
+        "rust": [
+          {
+            "command": 50,
+            "cache": {
+              "bytes": 2021714,
+              "nodes": 488
+            },
+            "metrics": {
+              "cpuMs": 243.688,
+              "maxRssBytes": 10059776
+            }
+          },
+          {
+            "command": 100,
+            "cache": {
+              "bytes": 2021714,
+              "nodes": 488
+            },
+            "metrics": {
+              "cpuMs": 468.259,
+              "maxRssBytes": 10092544
+            }
+          },
+          {
+            "command": 101,
+            "cache": {
+              "bytes": 0,
+              "nodes": 0
+            },
+            "metrics": {
+              "cpuMs": 468.826,
+              "maxRssBytes": 10092544
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "beyond-selection-cache",
+      "rootId": "1:1",
+      "inputHashes": {
+        "manifest": "191515b49869a7446de949249c5af6f20ae5c14b7758ac10985d6c51ea26ad4c",
+        "model": "0730f14d1978e40c735f228b99d3a1c4ea070634a2b6648890006c1700dcd2ca"
+      },
+      "summary": {
+        "managed": {
+          "node": {
+            "loadMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 118.8593125,
+              "p95": 176.831416,
+              "max": 180.368667
+            },
+            "indexMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 87.43533249999975,
+              "p95": 129.8011249999992,
+              "max": 131.07353900000055
+            },
+            "queryMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 53.70343700000001,
+              "p95": 55.562208999999996,
+              "max": 57.119417
+            },
+            "wallMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 186.568854,
+              "p95": 245.530917,
+              "max": 247.384583
+            },
+            "cpuMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 305.615,
+              "p95": 341.838,
+              "max": 361.883
+            },
+            "sampledTotalRssBytes": {
+              "samples": 30,
+              "missing": 0,
+              "median": 83009536,
+              "p95": 84475904,
+              "max": 85180416
+            },
+            "scratchBytes": {
+              "samples": 30,
+              "missing": 0,
+              "median": 28086650,
+              "p95": 28086650,
+              "max": 28086650
+            },
+            "allocatedScratchBytes": {
+              "samples": 30,
+              "missing": 0,
+              "median": 26255360,
+              "p95": 26255360,
+              "max": 26255360
+            },
+            "nodeBytes": {
+              "samples": 30,
+              "missing": 0,
+              "median": 987514,
+              "p95": 987514,
+              "max": 987514
+            },
+            "loadIo": {
+              "reads": 8193,
+              "readBytes": 393264,
+              "writes": 20483,
+              "writeBytes": 1675738
+            },
+            "queryIo": {
+              "reads": 28675,
+              "readBytes": 2859699,
+              "writes": 0,
+              "writeBytes": 0
+            },
+            "cache": {
+              "nodes": 2048,
+              "bytes": 1271524
+            },
+            "releaseCache": {
+              "nodes": 0,
+              "bytes": 0
+            }
+          },
+          "rust-before": {
+            "loadMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 60.0275415,
+              "p95": 68.970584,
+              "max": 78.85558300000001
+            },
+            "indexMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 54.15381600000039,
+              "p95": 63.009188000000265,
+              "max": 72.56296500000029
+            },
+            "queryMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 35.145292,
+              "p95": 36.381833,
+              "max": 36.729334
+            },
+            "wallMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 112.99962550000001,
+              "p95": 121.60737499999999,
+              "max": 132.9255
+            },
+            "cpuMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 110.769,
+              "p95": 116.44200000000001,
+              "max": 117.565
+            },
+            "sampledTotalRssBytes": {
+              "samples": 30,
+              "missing": 0,
+              "median": 60252160,
+              "p95": 61243392,
+              "max": 61276160
+            },
+            "scratchBytes": {
+              "samples": 30,
+              "missing": 0,
+              "median": 28086650,
+              "p95": 28086650,
+              "max": 28086650
+            },
+            "allocatedScratchBytes": {
+              "samples": 30,
+              "missing": 0,
+              "median": 26255360,
+              "p95": 26255360,
+              "max": 26255360
+            },
+            "nodeBytes": {
+              "samples": 30,
+              "missing": 0,
+              "median": 987514,
+              "p95": 987514,
+              "max": 987514
+            },
+            "loadIo": {
+              "readBytes": 393264,
+              "reads": 8193,
+              "writeBytes": 1675738,
+              "writes": 20483
+            },
+            "queryIo": {
+              "reads": 24579,
+              "readBytes": 2663091,
+              "writes": 0,
+              "writeBytes": 0
+            },
+            "cache": {
+              "bytes": 1271524,
+              "nodes": 2048
+            },
+            "releaseCache": {
+              "bytes": 0,
+              "nodes": 0
+            }
+          },
+          "rust": {
+            "loadMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 60.16220799999999,
+              "p95": 66.401792,
+              "max": 66.432541
+            },
+            "indexMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 54.38023850000033,
+              "p95": 60.33394800000027,
+              "max": 60.40549700000013
+            },
+            "queryMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 21.060083499999998,
+              "p95": 22.47275,
+              "max": 23.283166
+            },
+            "wallMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 101.2436665,
+              "p95": 109.16204200000001,
+              "max": 111.51908399999999
+            },
+            "cpuMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 99.062,
+              "p95": 103.324,
+              "max": 103.72300000000001
+            },
+            "sampledTotalRssBytes": {
+              "samples": 30,
+              "missing": 0,
+              "median": 61530112,
+              "p95": 63995904,
+              "max": 64143360
+            },
+            "scratchBytes": {
+              "samples": 30,
+              "missing": 0,
+              "median": 28119418,
+              "p95": 28119418,
+              "max": 28119418
+            },
+            "allocatedScratchBytes": {
+              "samples": 30,
+              "missing": 0,
+              "median": 26288128,
+              "p95": 26288128,
+              "max": 26288128
+            },
+            "nodeBytes": {
+              "samples": 30,
+              "missing": 0,
+              "median": 987514,
+              "p95": 987514,
+              "max": 987514
+            },
+            "loadIo": {
+              "readBytes": 393264,
+              "reads": 8193,
+              "writeBytes": 1708506,
+              "writes": 20483
+            },
+            "queryIo": {
+              "reads": 20483,
+              "readBytes": 1511898,
+              "writes": 0,
+              "writeBytes": 0
+            },
+            "cache": {
+              "bytes": 4191981,
+              "nodes": 1012
+            },
+            "releaseCache": {
+              "bytes": 0,
+              "nodes": 0
+            }
+          }
+        },
+        "warm": {
+          "node": {
+            "loadMs": {
+              "samples": 3,
+              "missing": 0,
+              "median": 118.44858299999999,
+              "p95": 118.85400000000001,
+              "max": 118.85400000000001
+            },
+            "indexMs": {
+              "samples": 3,
+              "missing": 0,
+              "median": 87.48631200000035,
+              "p95": 88.33840599999968,
+              "max": 88.33840599999968
+            },
+            "queryMs": {
+              "samples": 300,
+              "missing": 0,
+              "median": 37.57129199999986,
+              "p95": 40.195166999999856,
+              "max": 50.623459000000366
+            },
+            "wallMs": {
+              "samples": 3,
+              "missing": 0,
+              "median": 4377.478167,
+              "p95": 4412.821958,
+              "max": 4412.821958
+            },
+            "cpuMs": {
+              "samples": 3,
+              "missing": 0,
+              "median": 4876.04,
+              "p95": 4934.149,
+              "max": 4934.149
+            },
+            "sampledTotalRssBytes": {
+              "samples": 3,
+              "missing": 0,
+              "median": 110346240,
+              "p95": 111214592,
+              "max": 111214592
+            },
+            "scratchBytes": {
+              "samples": 3,
+              "missing": 0,
+              "median": 28086650,
+              "p95": 28086650,
+              "max": 28086650
+            },
+            "allocatedScratchBytes": {
+              "samples": 3,
+              "missing": 0,
+              "median": 26255360,
+              "p95": 26255360,
+              "max": 26255360
+            },
+            "nodeBytes": {
+              "samples": 3,
+              "missing": 0,
+              "median": 987514,
+              "p95": 987514,
+              "max": 987514
+            },
+            "loadIo": {
+              "reads": 8193,
+              "readBytes": 393264,
+              "writes": 20483,
+              "writeBytes": 1675738
+            },
+            "queryIo": {
+              "reads": 28675,
+              "readBytes": 2859699,
+              "writes": 0,
+              "writeBytes": 0
+            },
+            "cache": {
+              "nodes": 2048,
+              "bytes": 1271524
+            },
+            "releaseCache": {
+              "nodes": 0,
+              "bytes": 0
+            }
+          },
+          "rust-before": {
+            "loadMs": {
+              "samples": 3,
+              "missing": 0,
+              "median": 59.293333,
+              "p95": 59.5875,
+              "max": 59.5875
+            },
+            "indexMs": {
+              "samples": 3,
+              "missing": 0,
+              "median": 53.50726200000031,
+              "p95": 53.97520700000034,
+              "max": 53.97520700000034
+            },
+            "queryMs": {
+              "samples": 300,
+              "missing": 0,
+              "median": 28.4385625,
+              "p95": 37.455875,
+              "max": 144.243958
+            },
+            "wallMs": {
+              "samples": 3,
+              "missing": 0,
+              "median": 3560.13975,
+              "p95": 3755.3783750000002,
+              "max": 3755.3783750000002
+            },
+            "cpuMs": {
+              "samples": 3,
+              "missing": 0,
+              "median": 3398.99,
+              "p95": 3501.1000000000004,
+              "max": 3501.1000000000004
+            },
+            "sampledTotalRssBytes": {
+              "samples": 3,
+              "missing": 0,
+              "median": 73596928,
+              "p95": 78675968,
+              "max": 78675968
+            },
+            "scratchBytes": {
+              "samples": 3,
+              "missing": 0,
+              "median": 28086650,
+              "p95": 28086650,
+              "max": 28086650
+            },
+            "allocatedScratchBytes": {
+              "samples": 3,
+              "missing": 0,
+              "median": 26255360,
+              "p95": 26255360,
+              "max": 26255360
+            },
+            "nodeBytes": {
+              "samples": 3,
+              "missing": 0,
+              "median": 987514,
+              "p95": 987514,
+              "max": 987514
+            },
+            "loadIo": {
+              "readBytes": 393264,
+              "reads": 8193,
+              "writeBytes": 1675738,
+              "writes": 20483
+            },
+            "queryIo": {
+              "reads": 24579,
+              "readBytes": 2663091,
+              "writes": 0,
+              "writeBytes": 0
+            },
+            "cache": {
+              "bytes": 1271524,
+              "nodes": 2048
+            },
+            "releaseCache": {
+              "bytes": 0,
+              "nodes": 0
+            }
+          },
+          "rust": {
+            "loadMs": {
+              "samples": 3,
+              "missing": 0,
+              "median": 60.056959,
+              "p95": 69.960667,
+              "max": 69.960667
+            },
+            "indexMs": {
+              "samples": 3,
+              "missing": 0,
+              "median": 54.32388100000038,
+              "p95": 63.39363800000044,
+              "max": 63.39363800000044
+            },
+            "queryMs": {
+              "samples": 300,
+              "missing": 0,
+              "median": 18.392125,
+              "p95": 19.679459,
+              "max": 25.871458
+            },
+            "wallMs": {
+              "samples": 3,
+              "missing": 0,
+              "median": 2156.529792,
+              "p95": 2173.750583,
+              "max": 2173.750583
+            },
+            "cpuMs": {
+              "samples": 3,
+              "missing": 0,
+              "median": 2244.9040000000005,
+              "p95": 2245.6969999999997,
+              "max": 2245.6969999999997
+            },
+            "sampledTotalRssBytes": {
+              "samples": 3,
+              "missing": 0,
+              "median": 79888384,
+              "p95": 80396288,
+              "max": 80396288
+            },
+            "scratchBytes": {
+              "samples": 3,
+              "missing": 0,
+              "median": 28119418,
+              "p95": 28119418,
+              "max": 28119418
+            },
+            "allocatedScratchBytes": {
+              "samples": 3,
+              "missing": 0,
+              "median": 26288128,
+              "p95": 26288128,
+              "max": 26288128
+            },
+            "nodeBytes": {
+              "samples": 3,
+              "missing": 0,
+              "median": 987514,
+              "p95": 987514,
+              "max": 987514
+            },
+            "loadIo": {
+              "readBytes": 393264,
+              "reads": 8193,
+              "writeBytes": 1708506,
+              "writes": 20483
+            },
+            "queryIo": {
+              "reads": 20483,
+              "readBytes": 1511898,
+              "writes": 0,
+              "writeBytes": 0
+            },
+            "cache": {
+              "bytes": 4191981,
+              "nodes": 1012
+            },
+            "releaseCache": {
+              "bytes": 0,
+              "nodes": 0
+            }
+          }
+        },
+        "churn": {
+          "node": {
+            "loadMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 116.35370800000001,
+              "p95": 116.35370800000001,
+              "max": 116.35370800000001
+            },
+            "indexMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 85.0191940000003,
+              "p95": 85.0191940000003,
+              "max": 85.0191940000003
+            },
+            "queryMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 52.8665,
+              "p95": 52.8665,
+              "max": 52.8665
+            },
+            "wallMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 2959.278334,
+              "p95": 2959.278334,
+              "max": 2959.278334
+            },
+            "cpuMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 3317.022,
+              "p95": 3317.022,
+              "max": 3317.022
+            },
+            "sampledTotalRssBytes": {
+              "samples": 1,
+              "missing": 0,
+              "median": 131317760,
+              "p95": 131317760,
+              "max": 131317760
+            },
+            "scratchBytes": {
+              "samples": 1,
+              "missing": 0,
+              "median": 28086650,
+              "p95": 28086650,
+              "max": 28086650
+            },
+            "allocatedScratchBytes": {
+              "samples": 1,
+              "missing": 0,
+              "median": 26255360,
+              "p95": 26255360,
+              "max": 26255360
+            },
+            "nodeBytes": {
+              "samples": 1,
+              "missing": 0,
+              "median": 987514,
+              "p95": 987514,
+              "max": 987514
+            },
+            "loadIo": {
+              "reads": 8193,
+              "readBytes": 393264,
+              "writes": 20483,
+              "writeBytes": 1675738
+            },
+            "queryIo": {
+              "reads": 28675,
+              "readBytes": 2859699,
+              "writes": 0,
+              "writeBytes": 0
+            },
+            "cache": {
+              "nodes": 2048,
+              "bytes": 1271524
+            },
+            "releaseCache": {
+              "nodes": 0,
+              "bytes": 0
+            }
+          },
+          "rust-before": {
+            "loadMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 60.111083,
+              "p95": 60.111083,
+              "max": 60.111083
+            },
+            "indexMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 54.27698700000029,
+              "p95": 54.27698700000029,
+              "max": 54.27698700000029
+            },
+            "queryMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 34.341,
+              "p95": 34.341,
+              "max": 34.341
+            },
+            "wallMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 2031.347667,
+              "p95": 2031.347667,
+              "max": 2031.347667
+            },
+            "cpuMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 2035.464,
+              "p95": 2035.464,
+              "max": 2035.464
+            },
+            "sampledTotalRssBytes": {
+              "samples": 1,
+              "missing": 0,
+              "median": 65994752,
+              "p95": 65994752,
+              "max": 65994752
+            },
+            "scratchBytes": {
+              "samples": 1,
+              "missing": 0,
+              "median": 28086650,
+              "p95": 28086650,
+              "max": 28086650
+            },
+            "allocatedScratchBytes": {
+              "samples": 1,
+              "missing": 0,
+              "median": 26255360,
+              "p95": 26255360,
+              "max": 26255360
+            },
+            "nodeBytes": {
+              "samples": 1,
+              "missing": 0,
+              "median": 987514,
+              "p95": 987514,
+              "max": 987514
+            },
+            "loadIo": {
+              "readBytes": 393264,
+              "reads": 8193,
+              "writeBytes": 1675738,
+              "writes": 20483
+            },
+            "queryIo": {
+              "reads": 24579,
+              "readBytes": 2663091,
+              "writes": 0,
+              "writeBytes": 0
+            },
+            "cache": {
+              "bytes": 1271524,
+              "nodes": 2048
+            },
+            "releaseCache": {
+              "bytes": 0,
+              "nodes": 0
+            }
+          },
+          "rust": {
+            "loadMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 62.524417,
+              "p95": 62.524417,
+              "max": 62.524417
+            },
+            "indexMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 56.62941500000031,
+              "p95": 56.62941500000031,
+              "max": 56.62941500000031
+            },
+            "queryMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 25.556458,
+              "p95": 25.556458,
+              "max": 25.556458
+            },
+            "wallMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 1406.956125,
+              "p95": 1406.956125,
+              "max": 1406.956125
+            },
+            "cpuMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 1407.3899999999999,
+              "p95": 1407.3899999999999,
+              "max": 1407.3899999999999
+            },
+            "sampledTotalRssBytes": {
+              "samples": 1,
+              "missing": 0,
+              "median": 68632576,
+              "p95": 68632576,
+              "max": 68632576
+            },
+            "scratchBytes": {
+              "samples": 1,
+              "missing": 0,
+              "median": 28119418,
+              "p95": 28119418,
+              "max": 28119418
+            },
+            "allocatedScratchBytes": {
+              "samples": 1,
+              "missing": 0,
+              "median": 26288128,
+              "p95": 26288128,
+              "max": 26288128
+            },
+            "nodeBytes": {
+              "samples": 1,
+              "missing": 0,
+              "median": 987514,
+              "p95": 987514,
+              "max": 987514
+            },
+            "loadIo": {
+              "readBytes": 393264,
+              "reads": 8193,
+              "writeBytes": 1708506,
+              "writes": 20483
+            },
+            "queryIo": {
+              "reads": 20483,
+              "readBytes": 1511898,
+              "writes": 0,
+              "writeBytes": 0
+            },
+            "cache": {
+              "bytes": 4191981,
+              "nodes": 1012
+            },
+            "releaseCache": {
+              "bytes": 0,
+              "nodes": 0
+            }
+          }
+        }
+      },
+      "warmIo": {
+        "node": {
+          "reads": 20485,
+          "readBytes": 1677026,
+          "writes": 0,
+          "writeBytes": 0
+        },
+        "rust-before": {
+          "readBytes": 1480418,
+          "reads": 16389,
+          "writeBytes": 0,
+          "writes": 0
+        },
+        "rust": {
+          "readBytes": 1220152,
+          "reads": 18459,
+          "writeBytes": 0,
+          "writes": 0
+        }
+      },
+      "churn": {
+        "node": [
+          {
+            "command": 50,
+            "cache": {
+              "nodes": 585,
+              "bytes": 361252
+            },
+            "metrics": {
+              "rssBytes": 129695744
+            }
+          },
+          {
+            "command": 100,
+            "cache": {
+              "nodes": 585,
+              "bytes": 361252
+            },
+            "metrics": {
+              "rssBytes": 113557504
+            }
+          },
+          {
+            "command": 101,
+            "cache": {
+              "nodes": 0,
+              "bytes": 0
+            },
+            "metrics": {
+              "rssBytes": 113557504
+            }
+          }
+        ],
+        "rust-before": [
+          {
+            "command": 50,
+            "cache": {
+              "bytes": 361252,
+              "nodes": 585
+            },
+            "metrics": {
+              "cpuMs": 1038.395,
+              "maxRssBytes": 8454144
+            }
+          },
+          {
+            "command": 100,
+            "cache": {
+              "bytes": 361252,
+              "nodes": 585
+            },
+            "metrics": {
+              "cpuMs": 2011.6979999999999,
+              "maxRssBytes": 8650752
+            }
+          },
+          {
+            "command": 101,
+            "cache": {
+              "bytes": 0,
+              "nodes": 0
+            },
+            "metrics": {
+              "cpuMs": 2011.772,
+              "maxRssBytes": 8650752
+            }
+          }
+        ],
+        "rust": [
+          {
+            "command": 50,
+            "cache": {
+              "bytes": 2423779,
+              "nodes": 585
+            },
+            "metrics": {
+              "cpuMs": 718.433,
+              "maxRssBytes": 13025280
+            }
+          },
+          {
+            "command": 100,
+            "cache": {
+              "bytes": 2423779,
+              "nodes": 585
+            },
+            "metrics": {
+              "cpuMs": 1369.412,
+              "maxRssBytes": 13041664
+            }
+          },
+          {
+            "command": 101,
+            "cache": {
+              "bytes": 0,
+              "nodes": 0
+            },
+            "metrics": {
+              "cpuMs": 1370.223,
+              "maxRssBytes": 13041664
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "validation": {
+    "npmTests": 332,
+    "cargoTests": 3,
+    "stage8Tests": 11,
+    "check": true,
+    "sourceAndBinaryHashesVerified": true,
+    "baselineBinaryVerified": true
+  },
+  "limitations": {
+    "publicMcp": false,
+    "fullMemoryBudgetAccepted": false,
+    "windowsAccepted": false,
+    "parsedCacheCharge": "Conservative std BTreeMap/Rc/string/array capacity estimate, capped at 4 MiB; not allocator RSS.",
+    "memoryTradeoff": "Versus old Rust, sampled warm combined RSS on 4097 nodes increased 8.55%; both Rust variants remain below Node."
+  },
+  "decision": {
+    "date": "2026-10-26",
+    "authority": "explicit user decision",
+    "R04": "Choose optimized Rust for disk index, traversal and bounded selection cache.",
+    "acceptedTradeoffs": [
+      "4097-node warm sampled combined RSS +6 MiB (+8.55%) versus previous Rust",
+      "Original thresholds and measured values remain unchanged"
+    ],
+    "R06": "Superseded on 2026-10-26: plan Rust migration of NetworkStore; filesystem/publication/retention in 08b, coordinator/read leases in 10, freshness/live ownership in 11. Not implemented yet.",
+    "productionEnabled": false,
+    "fullContextAccepted": false,
+    "windowsAccepted": false,
+    "targetServerArchitecture": "Rust for all technically portable server components; Node is temporary integration/fallback until acceptance.",
+    "networkStoreRustImplemented": false
+  }
+}

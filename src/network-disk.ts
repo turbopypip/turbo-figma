@@ -1,3 +1,4 @@
+import type { RustStorage } from './network-rust-storage.js';
 import { LIVE_LIMITS, validateLiveChange, assertLiveType } from './network-live.js';
 import { effectiveVariableNode, nativeVariableBindings } from './network-variables.js';
 import { VariableAssetIndex } from './network-variable-index.js';
@@ -36,14 +37,14 @@ function read(fd: number, size: number, position: number) {
 }
 /** An on-disk hash table + node log + linked child edges; no document map in RAM. */
 export class DiskNetworkSnapshot {
-  private variableAssets: VariableAssetIndex;
+  private variableAssets: Pick<VariableAssetIndex, 'get' | 'add'>;
   private layoutSchemaHash?: string;
   setLayoutSchemaHash(hash: string) { this.layoutSchemaHash = hash; }
   private fds: number[] = [];
   private selected = new Map<string, string>();
   private selectedBytes = 0;
   private selectionId?: string;
-  selectionCacheStats() { return { nodes: this.selected.size, bytes: this.selectedBytes }; }
+  selectionCacheStats() { if (this.native) return this.native.stats.cache; return { nodes: this.selected.size, bytes: this.selectedBytes }; }
   private log = 0;
   private table = 0;
   private edges = 0;
@@ -58,7 +59,13 @@ export class DiskNetworkSnapshot {
   private live = 0;
   private applied = 0;
   private poisoned = false;
-  constructor(readonly fileKey: string, directory: string) {
+  constructor(readonly fileKey: string, directory: string, private native?: RustStorage) {
+    if (native) {
+      this.variableAssets = { get: (type, ref) => native.call({op:'asset',type,ref}) ?? undefined, add: () => { throw new Error('Native index already loaded'); } };
+      this.count = native.stats.documentRecords; this.batches = native.stats.initialBatches; this.live = native.stats.ignoredLiveBatches;
+      this.started = this.ended = true;
+      return;
+    }
     try {
       for (const name of ['nodes.bin', 'index.bin', 'edges.bin','variable-assets.bin']) this.fds.push(openSync(join(directory, name), 'wx+', 0o600));
       [this.log, this.table, this.edges] = this.fds;
@@ -68,6 +75,13 @@ export class DiskNetworkSnapshot {
   }
   close() { for (const fd of this.fds.splice(0)) closeSync(fd); }
   private slot(id: string, create = false): { buffer: Buffer; offset: number } | undefined {
+    if (this.native) {
+      if (create) throw new Error('Native slot creation requires upsert');
+      const slot = this.native.call({op:'slot',id});
+      if (!slot) return;
+      const buffer = Buffer.alloc(SLOT_BYTES); buffer.writeUInt32LE(slot.length,32); buffer.writeUInt32LE(slot.children,40);
+      return {buffer,offset:0};
+    }
     const [session, local] = id.split(':').map(Number);
     let hash = 2166136261;
     for (const c of id) hash = Math.imul(hash ^ c.charCodeAt(0), 16777619) >>> 0;
@@ -115,6 +129,7 @@ export class DiskNetworkSnapshot {
     try {
       if (!changes.length || changes.length > LIVE_LIMITS.changes || this.applied >= LIVE_LIMITS.batches) throw new Error('Live batch limit exceeded');
       this.selected.clear(); this.selectedBytes = 0;
+      this.native?.call({op:"invalidate"});
       const ids = new Set<string>();
       for (const change of changes) {
         validateLiveChange(change);
@@ -128,13 +143,14 @@ export class DiskNetworkSnapshot {
         if (change.phase === 'CREATED') {
           if (!change.type || !change.parentIndex) throw new Error('Incomplete live creation');
           assertLiveType(change);
-        } else if (change.type !== undefined && change.type !== old.type) throw new Error('Live type change unsupported');
+        } else if (change.type !== undefined && change.type !== old!.type) throw new Error('Live type change unsupported');
         if (change.phase === 'REMOVED') {
           if (id === this.selectionId || this.children(id, false).length) throw new Error('Removing selection root or non-leaf requires recapture');
-          slot!.buffer.writeUInt32LE(0, 32); write(this.table, slot!.buffer, slot!.offset);
+          if (this.native) this.native.call({op:'remove',id});
+          else { slot!.buffer.writeUInt32LE(0, 32); write(this.table, slot!.buffer, slot!.offset); }
           this.count--; continue;
         }
-        const merged = { ...old, ...change, phase: 'CREATED' };
+        const merged: Record<string, any> = { ...old, ...change, phase: 'CREATED' };
         // Every changed node must have a complete, acyclic ancestry in the disk index.
         let parent = merged.parentIndex?.guid;
         const ancestors = new Set<string>([id]);
@@ -147,6 +163,7 @@ export class DiskNetworkSnapshot {
           parent = p.parentIndex?.guid;
         }
         if (change.phase === 'CREATED' && ++this.count > DISK_LIMITS.nodes) throw new Error('Live node limit exceeded');
+        if (this.native) { this.native.call({op:'upsert',node:merged}); continue; }
         const target = slot ?? this.slot(id, true)!;
         const data = Buffer.from(JSON.stringify(merged));
         if (data.length > DISK_LIMITS.nodeBytes || this.bytes + data.length > DISK_LIMITS.totalBytes) throw new Error('Live disk size limit exceeded');
@@ -183,7 +200,8 @@ export class DiskNetworkSnapshot {
     this.batchNodes = 0;
   }
   finish() { if (!this.ended || !this.count) throw new Error('Incomplete initial load: JOIN_END or nodes missing. Recapture after loading finishes.'); }
-  private node(id: string, cache = true) {
+  private node(id: string, cache = true): Record<string, any> {
+    if (this.native) return this.native.call({op:"node",id,cache});
     const cached = this.selected.get(id);
     if (cached !== undefined) return JSON.parse(cached);
     const slot = this.slot(id), length = slot?.buffer.readUInt32LE(32);
@@ -196,6 +214,12 @@ export class DiskNetworkSnapshot {
     return JSON.parse(value);
   }
   private children(id: string, cache = true, dependency?: (id:string)=>Record<string,any> | undefined): string[] {
+    if (this.native) {
+      const children: string[] = this.native.call({op:'children',id});
+      // Preserve dependency budget accounting used by instance expansion.
+      if (dependency) for (const child of children) dependency(child);
+      return children;
+    }
     const slot = this.slot(id);
     if (!slot) return [];
     if (slot.buffer.readUInt32LE(40) > DISK_LIMITS.siblings) throw new Error('Sibling count limit exceeded; select a smaller branch');
@@ -222,7 +246,12 @@ export class DiskNetworkSnapshot {
     const { fileKey, nodeId } = parseNetworkSelection(params.url);
     if (fileKey !== this.fileKey) throw new Error('Selection file does not match capture');
     if (!Number.isInteger(params.depth) || params.depth < 0 || params.depth > 50 || !Number.isInteger(params.maxNodes) || params.maxNodes < 1 || params.maxNodes > 500 || !Number.isSafeInteger(params.offset) || params.offset < 0) throw new Error('Invalid traversal limits');
-    if (this.selectionId !== nodeId) { this.selected.clear(); this.selectedBytes = 0; this.selectionId = nodeId; }
+    if (this.selectionId !== nodeId) { this.selected.clear(); this.selectedBytes = 0; this.selectionId = nodeId; this.native?.call({op:"select",id:nodeId}); }
+    this.native?.beginQuery();
+    try { return this.project(params, fileKey, nodeId); }
+    finally { this.native?.endQuery(); }
+  }
+  private project(params: NetworkQuery, fileKey: string, nodeId: string) {
     const nodeBudget = responseBudget(params) - 3072;
     let dependencyReads=0,dependencyBytes=0,unresolvedCount=0;
     const dependency = (id:string) => {

@@ -1,3 +1,10 @@
+mod disk;
+mod frame;
+mod json;
+mod stage6;
+mod stage7;
+mod stage8;
+mod wire;
 use std::io::{self, BufRead, Read, Write};
 use std::time::Duration;
 
@@ -5,6 +12,40 @@ const LIMIT: usize = 65536;
 
 // One bounded request per process. stdout is exclusively protocol data.
 fn main() -> io::Result<()> {
+    let args: Vec<String> = std::env::args().collect();
+    if args.get(1).is_some_and(|s| s == "--stage8") {
+        if let Err(error) = stage8::run(
+            args.get(2).map(String::as_str).unwrap_or(""),
+            args.get(3).map(String::as_str),
+        ) {
+            eprintln!("{error}");
+            std::process::exit(1);
+        }
+        eprintln!("STAGE6_METRICS {}", stage6::metrics());
+        return Ok(());
+    }
+    if args.get(1).is_some_and(|s| s == "--stage7") {
+        if let Err(error) = stage7::run(
+            args.get(2).map(String::as_str).unwrap_or(""),
+            args.get(3).map(String::as_str),
+        ) {
+            eprintln!("{error}");
+            std::process::exit(1);
+        }
+        eprintln!("STAGE6_METRICS {}", stage6::metrics());
+        return Ok(());
+    }
+    if args.get(1).is_some_and(|s| s == "--stage6") {
+        if let Err(error) = stage6::run(
+            args.get(2).map(String::as_str).unwrap_or(""),
+            args.get(3).map(String::as_str),
+        ) {
+            eprintln!("{error}");
+            std::process::exit(1);
+        }
+        eprintln!("STAGE6_METRICS {}", stage6::metrics());
+        return Ok(());
+    }
     let mut input = io::stdin().lock().take((LIMIT + 1) as u64);
     let mut line = String::new();
     input.read_line(&mut line)?;

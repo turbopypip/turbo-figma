@@ -1,4 +1,4 @@
-name: Rust helper prototype
+name: Rust snapshot runtime
 on: [push, pull_request]
 jobs:
   helper:
@@ -17,6 +17,13 @@ jobs:
       - run: node --test tests/rust-helper.test.mjs
         env:
           REQUIRE_RUST_HELPER: '1'
+      - if: runner.os == 'macOS'
+        run: npm ci
+      - if: runner.os == 'macOS'
+        run: npm run check && npm test
+        env:
+          REQUIRE_RUST_HELPER: '1'
+          FIGMA_NETWORK_BACKEND: rust
       - uses: actions/upload-artifact@v4
         with:
           name: rust-helper-${{ runner.os }}-${{ runner.arch }}

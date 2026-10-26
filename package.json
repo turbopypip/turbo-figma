@@ -14,7 +14,8 @@
     "setup": "node scripts/setup.mjs",
     "measure": "node scripts/measure.mjs",
     "measure:network": "npm run build && node scripts/measure-network-pipeline.mjs",
-    "measure:network:disk": "npm run build && node scripts/measure-network-disk.mjs"
+    "measure:network:disk": "npm run build && node scripts/measure-network-disk.mjs",
+    "build:rust": "node scripts/build-rust.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/server": "^2.3.1",

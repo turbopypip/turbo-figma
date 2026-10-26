@@ -1,0 +1,167 @@
+{
+  "databaseRevision": "21d909e4c8bd4e14c7aea58bf980c881a0053ab1",
+  "lockSha256": "c0ab84af7e6bb83c58546964d4640eb597ad06f026d7f3a929be9d093d82bafc",
+  "packages": [
+    {
+      "name": "base64",
+      "version": "0.23.1"
+    },
+    {
+      "name": "block-buffer",
+      "version": "0.12.1"
+    },
+    {
+      "name": "cc",
+      "version": "1.10.0"
+    },
+    {
+      "name": "cfg-if",
+      "version": "1.0.5"
+    },
+    {
+      "name": "cpufeatures",
+      "version": "0.3.1"
+    },
+    {
+      "name": "crypto-common",
+      "version": "0.2.2"
+    },
+    {
+      "name": "digest",
+      "version": "0.11.3"
+    },
+    {
+      "name": "figma-rust-helper",
+      "version": "0.1.0"
+    },
+    {
+      "name": "find-msvc-tools",
+      "version": "0.1.15"
+    },
+    {
+      "name": "getrandom",
+      "version": "0.4.3"
+    },
+    {
+      "name": "hybrid-array",
+      "version": "0.4.15"
+    },
+    {
+      "name": "itoa",
+      "version": "1.0.18"
+    },
+    {
+      "name": "jobserver",
+      "version": "0.1.35"
+    },
+    {
+      "name": "libc",
+      "version": "0.2.191"
+    },
+    {
+      "name": "memchr",
+      "version": "2.8.3"
+    },
+    {
+      "name": "pkg-config",
+      "version": "0.3.34"
+    },
+    {
+      "name": "proc-macro2",
+      "version": "1.0.107"
+    },
+    {
+      "name": "quote",
+      "version": "1.0.47"
+    },
+    {
+      "name": "r-efi",
+      "version": "6.0.0"
+    },
+    {
+      "name": "serde",
+      "version": "1.0.229"
+    },
+    {
+      "name": "serde_core",
+      "version": "1.0.229"
+    },
+    {
+      "name": "serde_derive",
+      "version": "1.0.229"
+    },
+    {
+      "name": "serde_json",
+      "version": "1.0.154"
+    },
+    {
+      "name": "sha2",
+      "version": "0.11.1"
+    },
+    {
+      "name": "shlex",
+      "version": "2.0.1"
+    },
+    {
+      "name": "syn",
+      "version": "3.0.9"
+    },
+    {
+      "name": "typenum",
+      "version": "1.20.1"
+    },
+    {
+      "name": "unicode-ident",
+      "version": "1.0.27"
+    },
+    {
+      "name": "zmij",
+      "version": "1.0.23"
+    },
+    {
+      "name": "zstd",
+      "version": "0.14.3"
+    },
+    {
+      "name": "zstd-safe",
+      "version": "8.2.0"
+    },
+    {
+      "name": "zstd-sys",
+      "version": "2.1.2+zstd.1.5.7"
+    }
+  ],
+  "matchingAdvisories": [
+    {
+      "package": "shlex",
+      "locked": "2.0.1",
+      "id": "RUSTSEC-2024-0006",
+      "patched": [
+        ">= 1.3.0"
+      ],
+      "assessment": "locked version is in patched range (reviewed)"
+    },
+    {
+      "package": "sha2",
+      "locked": "0.11.1",
+      "id": "RUSTSEC-2021-0100",
+      "patched": [
+        ">= 0.9.8"
+      ],
+      "assessment": "locked version is in patched range (reviewed)"
+    },
+    {
+      "package": "base64",
+      "locked": "0.23.1",
+      "id": "RUSTSEC-2017-0004",
+      "patched": [
+        ">= 0.5.2"
+      ],
+      "assessment": "locked version is in patched range (reviewed)"
+    }
+  ],
+  "limitations": [
+    "Known RustSec advisories only; not a source-code audit or guarantee against unknown vulnerabilities.",
+    "Names checked across the complete lockfile, including build and target-specific dependencies."
+  ]
+}

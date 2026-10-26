@@ -1,0 +1,1276 @@
+{
+  "version": 1,
+  "runId": "stage6-benchmark-Nb0go46Y1Lww",
+  "date": "2026-10-25T19:31:44.852Z",
+  "metadata": {
+    "revision": "c33d83a2eab0f923d40bc65a16f4803c20f1fde8",
+    "node": "v20.12.2",
+    "os": "24.6.0",
+    "arch": "arm64",
+    "cpu": "Apple M1",
+    "ram": 8589934592,
+    "cargoLock": "c0ab84af7e6bb83c58546964d4640eb597ad06f026d7f3a929be9d093d82bafc",
+    "binary": "667eeea9ac02126ada63d5e095d0021a26065f652459d77bdd8873d97bb835d3"
+  },
+  "thresholds": {
+    "timePercent": 20,
+    "memoryPercent": 15,
+    "otherRegressionPercent": 5,
+    "fullColdPercent": 10
+  },
+  "sourceHashes": {
+    "rust/helper/src/main.rs": "918c81c1f40b809ec720efde024845dad885e2d76235053a1b53d37fea029d84",
+    "rust/helper/src/frame.rs": "620177a81a276c45a68968d6fee757d94609155c5896642bed6ecfccb040a03a",
+    "rust/helper/src/stage6.rs": "fdcc0caf9a4ddaa0eabd7953cd140ea9e13633b24c4971e5f3a333e28ed9ee8d",
+    "scripts/rust-helper/stage6-common.mjs": "67683f5941541cc3c9d38306cf5c4fb362ffc31fced7b9a88a789607cf0807e5",
+    "scripts/rust-helper/stage6-host.mjs": "535a71834712365ae3809fce458d8fe640eb14728c8b161887ab1321f4d29efc",
+    "scripts/rust-helper/stage6-driver.mjs": "a800c1307fcbd72611e0f4b28e64b85f7ac07f7e3f7d6a3c852d10caa2fcfeee",
+    "scripts/rust-helper/stage6-measure.mjs": "e93bb063644e08f11a2685227d3079e7f9a8be4a14bc62029de9637cf9811cdc"
+  },
+  "cases": [
+    {
+      "name": "real",
+      "frames": 7,
+      "summary": {
+        "input-cold": {
+          "node": {
+            "timeMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 22.047541499999998,
+              "p95": 22.823875,
+              "max": 23.062250000000006
+            },
+            "cpuProcessMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 115.0155,
+              "p95": 122.728,
+              "max": 125.915
+            },
+            "cpuWorkMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 31.529,
+              "p95": 34.349,
+              "max": 35.244
+            },
+            "peakRssBytes": {
+              "samples": 30,
+              "missing": 0,
+              "median": 82919424,
+              "p95": 85295104,
+              "max": 85360640
+            },
+            "sampledTotalRssBytes": {
+              "samples": 30,
+              "missing": 0,
+              "median": 71426048,
+              "p95": 83755008,
+              "max": 84180992
+            }
+          },
+          "rust": {
+            "timeMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 6.9167705,
+              "p95": 7.120791,
+              "max": 7.236291
+            },
+            "cpuProcessMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 8.7835,
+              "p95": 9.132,
+              "max": 9.154
+            },
+            "cpuWorkMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 6.916500000000001,
+              "p95": 7.1240000000000006,
+              "max": 7.224
+            },
+            "peakRssBytes": {
+              "samples": 30,
+              "missing": 0,
+              "median": 10797056,
+              "p95": 11124736,
+              "max": 11403264
+            },
+            "sampledTotalRssBytes": {
+              "samples": 30,
+              "missing": 0,
+              "median": 1384448,
+              "p95": 1638400,
+              "max": 1900544
+            }
+          },
+          "hybrid": {
+            "timeMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 16.902542,
+              "p95": 17.501667000000005,
+              "max": 19.25470899999999
+            },
+            "cpuProcessMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 104.568,
+              "p95": 108.817,
+              "max": 127.473
+            },
+            "cpuWorkMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 21.3125,
+              "p95": 22.598,
+              "max": 24.802
+            },
+            "peakRssBytes": {
+              "samples": 30,
+              "missing": 0,
+              "median": 57442304,
+              "p95": 58032128,
+              "max": 58195968
+            },
+            "sampledTotalRssBytes": {
+              "samples": 30,
+              "missing": 0,
+              "median": 66912256,
+              "p95": 69877760,
+              "max": 69959680
+            }
+          }
+        },
+        "input-warm": {
+          "node": {
+            "timeMs": {
+              "samples": 100,
+              "missing": 0,
+              "median": 12.012478999999928,
+              "p95": 15.892707999999999,
+              "max": 17.74841600000002
+            },
+            "cpuProcessMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 1942.186,
+              "p95": 1942.186,
+              "max": 1942.186
+            },
+            "cpuWorkMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 1859.345,
+              "p95": 1859.345,
+              "max": 1859.345
+            },
+            "peakRssBytes": {
+              "samples": 1,
+              "missing": 0,
+              "median": 194756608,
+              "p95": 194756608,
+              "max": 194756608
+            },
+            "sampledTotalRssBytes": {
+              "samples": 0,
+              "missing": 1,
+              "median": null,
+              "p95": null,
+              "max": null
+            }
+          },
+          "rust": {
+            "timeMs": {
+              "samples": 100,
+              "missing": 0,
+              "median": 5.983625,
+              "p95": 6.247958,
+              "max": 7.1785
+            },
+            "cpuProcessMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 662.144,
+              "p95": 662.144,
+              "max": 662.144
+            },
+            "cpuWorkMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 660.406,
+              "p95": 660.406,
+              "max": 660.406
+            },
+            "peakRssBytes": {
+              "samples": 1,
+              "missing": 0,
+              "median": 58523648,
+              "p95": 58523648,
+              "max": 58523648
+            },
+            "sampledTotalRssBytes": {
+              "samples": 0,
+              "missing": 1,
+              "median": null,
+              "p95": null,
+              "max": null
+            }
+          },
+          "hybrid": {
+            "timeMs": {
+              "samples": 100,
+              "missing": 0,
+              "median": 11.02181299999998,
+              "p95": 12.020167000000015,
+              "max": 14.486958000000016
+            },
+            "cpuProcessMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 1511.8670000000002,
+              "p95": 1511.8670000000002,
+              "max": 1511.8670000000002
+            },
+            "cpuWorkMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 1431.996,
+              "p95": 1431.996,
+              "max": 1431.996
+            },
+            "peakRssBytes": {
+              "samples": 1,
+              "missing": 0,
+              "median": 121356288,
+              "p95": 121356288,
+              "max": 121356288
+            },
+            "sampledTotalRssBytes": {
+              "samples": 0,
+              "missing": 1,
+              "median": null,
+              "p95": null,
+              "max": null
+            }
+          }
+        },
+        "inflate-cold": {
+          "node": {
+            "timeMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 159.058896,
+              "p95": 161.63475,
+              "max": 164.966375
+            },
+            "cpuProcessMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 335.7935,
+              "p95": 342.194,
+              "max": 345.29
+            },
+            "cpuWorkMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 252.6565,
+              "p95": 258.614,
+              "max": 261.412
+            },
+            "peakRssBytes": {
+              "samples": 30,
+              "missing": 0,
+              "median": 129122304,
+              "p95": 132775936,
+              "max": 135397376
+            },
+            "sampledTotalRssBytes": {
+              "samples": 30,
+              "missing": 0,
+              "median": 129105920,
+              "p95": 132874240,
+              "max": 135430144
+            }
+          },
+          "rust": {
+            "timeMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 31.082625,
+              "p95": 32.607459,
+              "max": 34.594042
+            },
+            "cpuProcessMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 32.799,
+              "p95": 34.824,
+              "max": 36.179
+            },
+            "cpuWorkMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 31.068,
+              "p95": 32.602000000000004,
+              "max": 34.314
+            },
+            "peakRssBytes": {
+              "samples": 30,
+              "missing": 0,
+              "median": 26165248,
+              "p95": 26165248,
+              "max": 26165248
+            },
+            "sampledTotalRssBytes": {
+              "samples": 30,
+              "missing": 0,
+              "median": 26001408,
+              "p95": 26001408,
+              "max": 26083328
+            }
+          }
+        },
+        "inflate-warm": {
+          "node": {
+            "timeMs": {
+              "samples": 100,
+              "missing": 0,
+              "median": 112.99850000000038,
+              "p95": 114.95241700000042,
+              "max": 124.7844589999986
+            },
+            "cpuProcessMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 13184.371,
+              "p95": 13184.371,
+              "max": 13184.371
+            },
+            "cpuWorkMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 13103.419,
+              "p95": 13103.419,
+              "max": 13103.419
+            },
+            "peakRssBytes": {
+              "samples": 1,
+              "missing": 0,
+              "median": 261750784,
+              "p95": 261750784,
+              "max": 261750784
+            },
+            "sampledTotalRssBytes": {
+              "samples": 0,
+              "missing": 1,
+              "median": null,
+              "p95": null,
+              "max": null
+            }
+          },
+          "rust": {
+            "timeMs": {
+              "samples": 100,
+              "missing": 0,
+              "median": 28.262771,
+              "p95": 30.222583,
+              "max": 31.342041000000002
+            },
+            "cpuProcessMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 3106.647,
+              "p95": 3106.647,
+              "max": 3106.647
+            },
+            "cpuWorkMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 3104.346,
+              "p95": 3104.346,
+              "max": 3104.346
+            },
+            "peakRssBytes": {
+              "samples": 1,
+              "missing": 0,
+              "median": 32194560,
+              "p95": 32194560,
+              "max": 32194560
+            },
+            "sampledTotalRssBytes": {
+              "samples": 0,
+              "missing": 1,
+              "median": null,
+              "p95": null,
+              "max": null
+            }
+          }
+        },
+        "pipeline": {
+          "node": {
+            "timeMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 1379.5601045,
+              "p95": 1435.127625,
+              "max": 1459.865791
+            },
+            "cpuProcessMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 1659.0495,
+              "p95": 1678.339,
+              "max": 1685.233
+            },
+            "cpuWorkMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 1573.797,
+              "p95": 1594.746,
+              "max": 1600.483
+            },
+            "sampledTotalRssBytes": {
+              "samples": 30,
+              "missing": 0,
+              "median": 175865856,
+              "p95": 184156160,
+              "max": 184729600
+            },
+            "hostPeakRssBytes": {
+              "samples": 30,
+              "missing": 0,
+              "median": 175906816,
+              "p95": 184221696,
+              "max": 184680448
+            },
+            "fallbacks": 0
+          },
+          "rust": {
+            "timeMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 1312.202625,
+              "p95": 1351.875583,
+              "max": 1551.046417
+            },
+            "cpuProcessMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 1569.3435,
+              "p95": 1605.1119999999999,
+              "max": 1722.3180000000002
+            },
+            "cpuWorkMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 1484.4345,
+              "p95": 1520.461,
+              "max": 1636.921
+            },
+            "sampledTotalRssBytes": {
+              "samples": 30,
+              "missing": 0,
+              "median": 186163200,
+              "p95": 188399616,
+              "max": 189054976
+            },
+            "hostPeakRssBytes": {
+              "samples": 30,
+              "missing": 0,
+              "median": 160464896,
+              "p95": 162693120,
+              "max": 163446784
+            },
+            "fallbacks": 0
+          }
+        }
+      }
+    },
+    {
+      "name": "typical",
+      "frames": 11,
+      "summary": {
+        "input-cold": {
+          "node": {
+            "timeMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 4.612479500000003,
+              "p95": 4.837125,
+              "max": 5.135832999999998
+            },
+            "cpuProcessMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 87.58500000000001,
+              "p95": 92.528,
+              "max": 93.565
+            },
+            "cpuWorkMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 5.043,
+              "p95": 5.22,
+              "max": 5.513
+            },
+            "peakRssBytes": {
+              "samples": 30,
+              "missing": 0,
+              "median": 54059008,
+              "p95": 54607872,
+              "max": 54722560
+            },
+            "sampledTotalRssBytes": {
+              "samples": 30,
+              "missing": 0,
+              "median": 52641792,
+              "p95": 53264384,
+              "max": 53264384
+            }
+          },
+          "rust": {
+            "timeMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 0.296896,
+              "p95": 0.32325000000000004,
+              "max": 0.32358400000000004
+            },
+            "cpuProcessMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 2.006,
+              "p95": 2.144,
+              "max": 2.197
+            },
+            "cpuWorkMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 0.30200000000000005,
+              "p95": 0.3260000000000003,
+              "max": 0.32800000000000007
+            },
+            "peakRssBytes": {
+              "samples": 30,
+              "missing": 0,
+              "median": 1507328,
+              "p95": 1507328,
+              "max": 1589248
+            },
+            "sampledTotalRssBytes": {
+              "samples": 28,
+              "missing": 2,
+              "median": 1458176,
+              "p95": 1507328,
+              "max": 1507328
+            }
+          },
+          "hybrid": {
+            "timeMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 6.4816875,
+              "p95": 6.909833000000006,
+              "max": 7.082250000000002
+            },
+            "cpuProcessMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 91.70100000000001,
+              "p95": 94.182,
+              "max": 106.561
+            },
+            "cpuWorkMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 8.7925,
+              "p95": 9.27,
+              "max": 9.837
+            },
+            "peakRssBytes": {
+              "samples": 30,
+              "missing": 0,
+              "median": 54173696,
+              "p95": 54771712,
+              "max": 54788096
+            },
+            "sampledTotalRssBytes": {
+              "samples": 30,
+              "missing": 0,
+              "median": 52658176,
+              "p95": 53346304,
+              "max": 53493760
+            }
+          }
+        },
+        "input-warm": {
+          "node": {
+            "timeMs": {
+              "samples": 100,
+              "missing": 0,
+              "median": 0.8271039999999914,
+              "p95": 1.0390410000000116,
+              "max": 1.1792080000000027
+            },
+            "cpuProcessMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 231.983,
+              "p95": 231.983,
+              "max": 231.983
+            },
+            "cpuWorkMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 151.625,
+              "p95": 151.625,
+              "max": 151.625
+            },
+            "peakRssBytes": {
+              "samples": 1,
+              "missing": 0,
+              "median": 66322432,
+              "p95": 66322432,
+              "max": 66322432
+            },
+            "sampledTotalRssBytes": {
+              "samples": 0,
+              "missing": 1,
+              "median": null,
+              "p95": null,
+              "max": null
+            }
+          },
+          "rust": {
+            "timeMs": {
+              "samples": 100,
+              "missing": 0,
+              "median": 0.23070849999999998,
+              "p95": 0.255208,
+              "max": 0.274375
+            },
+            "cpuProcessMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 27.679,
+              "p95": 27.679,
+              "max": 27.679
+            },
+            "cpuWorkMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 26.016,
+              "p95": 26.016,
+              "max": 26.016
+            },
+            "peakRssBytes": {
+              "samples": 1,
+              "missing": 0,
+              "median": 2015232,
+              "p95": 2015232,
+              "max": 2015232
+            },
+            "sampledTotalRssBytes": {
+              "samples": 0,
+              "missing": 1,
+              "median": null,
+              "p95": null,
+              "max": null
+            }
+          },
+          "hybrid": {
+            "timeMs": {
+              "samples": 100,
+              "missing": 0,
+              "median": 2.5801870000000022,
+              "p95": 2.920291999999961,
+              "max": 4.27145800000001
+            },
+            "cpuProcessMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 449.491,
+              "p95": 449.491,
+              "max": 449.491
+            },
+            "cpuWorkMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 369.21,
+              "p95": 369.21,
+              "max": 369.21
+            },
+            "peakRssBytes": {
+              "samples": 1,
+              "missing": 0,
+              "median": 78004224,
+              "p95": 78004224,
+              "max": 78004224
+            },
+            "sampledTotalRssBytes": {
+              "samples": 0,
+              "missing": 1,
+              "median": null,
+              "p95": null,
+              "max": null
+            }
+          }
+        },
+        "inflate-cold": {
+          "node": {
+            "timeMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 2.0136670000000017,
+              "p95": 2.135832999999998,
+              "max": 2.200040999999999
+            },
+            "cpuProcessMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 84.863,
+              "p95": 87.268,
+              "max": 88.509
+            },
+            "cpuWorkMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 2.4195,
+              "p95": 2.581,
+              "max": 2.59
+            },
+            "peakRssBytes": {
+              "samples": 30,
+              "missing": 0,
+              "median": 53338112,
+              "p95": 53985280,
+              "max": 54067200
+            },
+            "sampledTotalRssBytes": {
+              "samples": 30,
+              "missing": 0,
+              "median": 52764672,
+              "p95": 53362688,
+              "max": 53428224
+            }
+          },
+          "rust": {
+            "timeMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 0.088271,
+              "p95": 0.097583,
+              "max": 0.210125
+            },
+            "cpuProcessMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 1.8345,
+              "p95": 2.07,
+              "max": 2.274
+            },
+            "cpuWorkMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 0.09499999999999997,
+              "p95": 0.1080000000000001,
+              "max": 0.20099999999999962
+            },
+            "peakRssBytes": {
+              "samples": 30,
+              "missing": 0,
+              "median": 1507328,
+              "p95": 1556480,
+              "max": 1785856
+            },
+            "sampledTotalRssBytes": {
+              "samples": 22,
+              "missing": 8,
+              "median": 1490944,
+              "p95": 1507328,
+              "max": 1556480
+            }
+          }
+        },
+        "inflate-warm": {
+          "node": {
+            "timeMs": {
+              "samples": 100,
+              "missing": 0,
+              "median": 0.3716669999999951,
+              "p95": 0.5062080000000009,
+              "max": 1.9407920000000018
+            },
+            "cpuProcessMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 159.5,
+              "p95": 159.5,
+              "max": 159.5
+            },
+            "cpuWorkMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 79.041,
+              "p95": 79.041,
+              "max": 79.041
+            },
+            "peakRssBytes": {
+              "samples": 1,
+              "missing": 0,
+              "median": 84705280,
+              "p95": 84705280,
+              "max": 84705280
+            },
+            "sampledTotalRssBytes": {
+              "samples": 0,
+              "missing": 1,
+              "median": null,
+              "p95": null,
+              "max": null
+            }
+          },
+          "rust": {
+            "timeMs": {
+              "samples": 100,
+              "missing": 0,
+              "median": 0.05725,
+              "p95": 0.061416,
+              "max": 0.0915
+            },
+            "cpuProcessMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 8.452,
+              "p95": 8.452,
+              "max": 8.452
+            },
+            "cpuWorkMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 6.691,
+              "p95": 6.691,
+              "max": 6.691
+            },
+            "peakRssBytes": {
+              "samples": 1,
+              "missing": 0,
+              "median": 1835008,
+              "p95": 1835008,
+              "max": 1835008
+            },
+            "sampledTotalRssBytes": {
+              "samples": 0,
+              "missing": 1,
+              "median": null,
+              "p95": null,
+              "max": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "beyond-selection-cache",
+      "frames": 36,
+      "summary": {
+        "input-cold": {
+          "node": {
+            "timeMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 7.067542000000003,
+              "p95": 7.6358749999999915,
+              "max": 8.605916999999998
+            },
+            "cpuProcessMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 92.533,
+              "p95": 94.416,
+              "max": 98.978
+            },
+            "cpuWorkMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 8.7705,
+              "p95": 9.36,
+              "max": 10.626
+            },
+            "peakRssBytes": {
+              "samples": 30,
+              "missing": 0,
+              "median": 55918592,
+              "p95": 56360960,
+              "max": 56590336
+            },
+            "sampledTotalRssBytes": {
+              "samples": 30,
+              "missing": 0,
+              "median": 52781056,
+              "p95": 55492608,
+              "max": 55853056
+            }
+          },
+          "rust": {
+            "timeMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 0.9094585000000001,
+              "p95": 1.0801669999999999,
+              "max": 1.105041
+            },
+            "cpuProcessMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 2.6075,
+              "p95": 2.975,
+              "max": 3.158
+            },
+            "cpuWorkMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 0.9145000000000001,
+              "p95": 1.089,
+              "max": 1.103
+            },
+            "peakRssBytes": {
+              "samples": 30,
+              "missing": 0,
+              "median": 1769472,
+              "p95": 1884160,
+              "max": 1884160
+            },
+            "sampledTotalRssBytes": {
+              "samples": 30,
+              "missing": 0,
+              "median": 1654784,
+              "p95": 1687552,
+              "max": 1736704
+            }
+          },
+          "hybrid": {
+            "timeMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 7.886582999999998,
+              "p95": 8.284750000000003,
+              "max": 9.90808299999999
+            },
+            "cpuProcessMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 94.441,
+              "p95": 96.218,
+              "max": 121.948
+            },
+            "cpuWorkMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 11.189499999999999,
+              "p95": 11.925,
+              "max": 13.723
+            },
+            "peakRssBytes": {
+              "samples": 30,
+              "missing": 0,
+              "median": 54329344,
+              "p95": 54919168,
+              "max": 55083008
+            },
+            "sampledTotalRssBytes": {
+              "samples": 30,
+              "missing": 0,
+              "median": 52682752,
+              "p95": 53313536,
+              "max": 56918016
+            }
+          }
+        },
+        "input-warm": {
+          "node": {
+            "timeMs": {
+              "samples": 100,
+              "missing": 0,
+              "median": 1.722875000000002,
+              "p95": 2.010333000000003,
+              "max": 3.5542500000000103
+            },
+            "cpuProcessMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 370.197,
+              "p95": 370.197,
+              "max": 370.197
+            },
+            "cpuWorkMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 288.584,
+              "p95": 288.584,
+              "max": 288.584
+            },
+            "peakRssBytes": {
+              "samples": 1,
+              "missing": 0,
+              "median": 69468160,
+              "p95": 69468160,
+              "max": 69468160
+            },
+            "sampledTotalRssBytes": {
+              "samples": 0,
+              "missing": 1,
+              "median": null,
+              "p95": null,
+              "max": null
+            }
+          },
+          "rust": {
+            "timeMs": {
+              "samples": 100,
+              "missing": 0,
+              "median": 0.795833,
+              "p95": 0.8230839999999999,
+              "max": 0.8703339999999999
+            },
+            "cpuProcessMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 90,
+              "p95": 90,
+              "max": 90
+            },
+            "cpuWorkMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 88.29299999999999,
+              "p95": 88.29299999999999,
+              "max": 88.29299999999999
+            },
+            "peakRssBytes": {
+              "samples": 1,
+              "missing": 0,
+              "median": 2916352,
+              "p95": 2916352,
+              "max": 2916352
+            },
+            "sampledTotalRssBytes": {
+              "samples": 0,
+              "missing": 1,
+              "median": null,
+              "p95": null,
+              "max": null
+            }
+          },
+          "hybrid": {
+            "timeMs": {
+              "samples": 100,
+              "missing": 0,
+              "median": 3.172416499999997,
+              "p95": 3.7740829999999903,
+              "max": 4.329832999999979
+            },
+            "cpuProcessMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 587.4679999999998,
+              "p95": 587.4679999999998,
+              "max": 587.4679999999998
+            },
+            "cpuWorkMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 506.85799999999983,
+              "p95": 506.85799999999983,
+              "max": 506.85799999999983
+            },
+            "peakRssBytes": {
+              "samples": 1,
+              "missing": 0,
+              "median": 85442560,
+              "p95": 85442560,
+              "max": 85442560
+            },
+            "sampledTotalRssBytes": {
+              "samples": 0,
+              "missing": 1,
+              "median": null,
+              "p95": null,
+              "max": null
+            }
+          }
+        },
+        "inflate-cold": {
+          "node": {
+            "timeMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 3.3476040000000005,
+              "p95": 4.746749999999992,
+              "max": 8.026125
+            },
+            "cpuProcessMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 87.788,
+              "p95": 99.781,
+              "max": 104.484
+            },
+            "cpuWorkMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 4.241,
+              "p95": 4.93,
+              "max": 5.197
+            },
+            "peakRssBytes": {
+              "samples": 30,
+              "missing": 0,
+              "median": 53665792,
+              "p95": 54607872,
+              "max": 54886400
+            },
+            "sampledTotalRssBytes": {
+              "samples": 30,
+              "missing": 0,
+              "median": 52551680,
+              "p95": 53706752,
+              "max": 54575104
+            }
+          },
+          "rust": {
+            "timeMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 0.24554199999999998,
+              "p95": 0.274667,
+              "max": 0.28683400000000003
+            },
+            "cpuProcessMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 2.0140000000000002,
+              "p95": 2.238,
+              "max": 2.76
+            },
+            "cpuWorkMs": {
+              "samples": 30,
+              "missing": 0,
+              "median": 0.25150000000000006,
+              "p95": 0.2849999999999999,
+              "max": 0.29300000000000015
+            },
+            "peakRssBytes": {
+              "samples": 30,
+              "missing": 0,
+              "median": 1507328,
+              "p95": 1556480,
+              "max": 1638400
+            },
+            "sampledTotalRssBytes": {
+              "samples": 28,
+              "missing": 2,
+              "median": 1490944,
+              "p95": 1540096,
+              "max": 1540096
+            }
+          }
+        },
+        "inflate-warm": {
+          "node": {
+            "timeMs": {
+              "samples": 100,
+              "missing": 0,
+              "median": 1.04849999999999,
+              "p95": 3.9798339999999968,
+              "max": 7.483874999999998
+            },
+            "cpuProcessMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 287.537,
+              "p95": 287.537,
+              "max": 287.537
+            },
+            "cpuWorkMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 198.504,
+              "p95": 198.504,
+              "max": 198.504
+            },
+            "peakRssBytes": {
+              "samples": 1,
+              "missing": 0,
+              "median": 90537984,
+              "p95": 90537984,
+              "max": 90537984
+            },
+            "sampledTotalRssBytes": {
+              "samples": 0,
+              "missing": 1,
+              "median": null,
+              "p95": null,
+              "max": null
+            }
+          },
+          "rust": {
+            "timeMs": {
+              "samples": 100,
+              "missing": 0,
+              "median": 0.1985,
+              "p95": 0.20875000000000002,
+              "max": 0.247583
+            },
+            "cpuProcessMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 24.121,
+              "p95": 24.121,
+              "max": 24.121
+            },
+            "cpuWorkMs": {
+              "samples": 1,
+              "missing": 0,
+              "median": 22.299999999999997,
+              "p95": 22.299999999999997,
+              "max": 22.299999999999997
+            },
+            "peakRssBytes": {
+              "samples": 1,
+              "missing": 0,
+              "median": 1671168,
+              "p95": 1671168,
+              "max": 1671168
+            },
+            "sampledTotalRssBytes": {
+              "samples": 0,
+              "missing": 1,
+              "median": null,
+              "p95": null,
+              "max": null
+            }
+          }
+        }
+      }
+    }
+  ],
+  "rawReports": 525,
+  "decisions": {
+    "R01": "Accept Rust input as the chosen implementation for subsequent migration stages, by explicit user decision. Cold hybrid gain is 23.3%; original warm and full-request thresholds are not met and remain documented. Develop input, Zstandard, Kiwi and index in the same Rust component. Production activation remains subject to integration and acceptance; Node fallback is retained.",
+    "R02": "Accept Rust Zstandard as the chosen implementation for subsequent migration stages, by explicit user decision. Standalone gain is 80.5%; full load improves only 4.9% and median sampled combined peak RSS increases 5.9%. These limitations remain documented. Develop input, Zstandard, Kiwi and index in the same Rust component. Production activation remains subject to integration and acceptance; Node fallback is retained.",
+    "direction": "R01 input and R02 Zstandard are accepted on Rust. Stage 07 R03 Kiwi is also accepted, as clarified by the user on 2026-10-26. Stage 08 continues the unified Rust pipeline; no blanket full-server rewrite decision was made. Measurements unchanged."
+  },
+  "limitations": [
+    "macOS diagnostic measurements, not public MCP/browser/Kilo acceptance.",
+    "No Windows measurements; step 15.",
+    "Standalone peak RSS is kernel high-water; combined RSS is sampled simultaneous host+helper.",
+    "Warm CPU covers 10 warmups + 100 measured iterations; one warm host per implementation/case.",
+    "No N1 or alternative managed format; no forced GC or OS cache flush.",
+    "Full 500000000-byte product budget not accepted; extension is not measured."
+  ]
+}

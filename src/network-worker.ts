@@ -1,3 +1,4 @@
+import { RustStorage } from './network-rust-storage.js';
 import { LIVE_LIMITS, liveFields } from './network-live.js';
 import { createHash } from 'node:crypto';
 import { parentPort, workerData } from 'node:worker_threads';
@@ -7,7 +8,7 @@ import { BoundedWireDecoder, WIRE_LIMITS } from './network-wire.js';
 import { DiskNetworkSnapshot } from './network-disk.js';
 import { probeEvents, storedEvents } from './network-source.js';
 
-const started = performance.now();
+const started = performance.now() - (workerData.rust?.nativeLoadMs ?? 0);
 const measure = (stage: string) => {
   if (workerData.measure) parentPort!.postMessage({ measurement: { stage, elapsedMs: performance.now() - started,
     memory: process.memoryUsage(), processPeakRssBytes: process.resourceUsage().maxRSS * 1024 } });
@@ -16,7 +17,7 @@ let model: DiskNetworkSnapshot | undefined;
 try {
   measure('worker-start');
   const selection = parseNetworkSelection(workerData.url);
-  model = new DiskNetworkSnapshot(selection.fileKey, workerData.scratch);
+  model = new DiskNetworkSnapshot(selection.fileKey, workerData.scratch, workerData.rust ? new RustStorage(workerData.rust.shared, workerData.rust.loaded.stats) : undefined);
   let codec: BoundedWireDecoder | undefined, liveCodec: BoundedWireDecoder | undefined, socket: string | undefined;
   let metadata: Record<string, any> = {};
   const consume = (event: any) => {
@@ -41,7 +42,11 @@ try {
     if (!codec) throw new Error('Missing wire schema');
     model!.acceptMessage(codec.decode(inflateFrame(b, WIRE_LIMITS.frameBytes), node => model!.acceptNode(node)));
   };
-  if (workerData.snapshot) {
+  if (workerData.rust) {
+    const schema = Buffer.from(workerData.rust.loaded.schema, 'base64');
+    model.setLayoutSchemaHash(createHash('sha256').update(schema).digest('hex'));
+    liveCodec = new BoundedWireDecoder(schema, liveFields);
+  } else if (workerData.snapshot) {
     if (workerData.snapshot.fileKey !== selection.fileKey) throw new Error('Selection file does not match capture');
     for await (const event of storedEvents(workerData.projectDirectory, workerData.snapshot)) consume(event);
   } else {
@@ -66,7 +71,7 @@ try {
     const output = reused ? model!.query(params) : result;
     parentPort!.postMessage({ result: { ...output, ...(workerData.snapshot ? { snapshot: workerData.snapshot } : {}),
     capturedAt: metadata.startedAt, stoppedAt: metadata.stoppedAt, captureWarnings: warnings,
-    metrics: { selectionCacheHit: reused, selectionCache: model!.selectionCacheStats(), loadDecodeIndexMs: reused ? 0 : Math.round(decodedAt - started), queryMs: Math.round(reused ? performance.now() - queryStart : firstQueryMs),
+    metrics: { backend: workerData.rust ? "rust" : "node", rustFallback: workerData.rustFallback, rustPid: workerData.rust?.pid, selectionCacheHit: reused, selectionCache: model!.selectionCacheStats(), loadDecodeIndexMs: reused ? 0 : Math.round(decodedAt - started), queryMs: Math.round(reused ? performance.now() - queryStart : firstQueryMs),
       workerHeapUsedMiB: Math.round(process.memoryUsage().heapUsed / 1048576) } } });
   };
   respond(workerData, false); result = undefined;

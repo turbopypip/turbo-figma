@@ -1,3 +1,4 @@
+import { RustSnapshot, RUST_PACKET_BYTES, rustMode } from './network-rust.js';
 import { loadVariables, variablesFingerprint } from './variables.js';
 import { mapNetworkNodeVariables } from './network-variables.js';
 import { createHash } from 'node:crypto';
@@ -36,12 +37,13 @@ export function stopNetworkSelection(): Promise<void> {
 }
 const projectDirectory = fileURLToPath(new URL('../', import.meta.url));
 
-type Retained = { key: string; worker: Worker; scratch: string; dead?: boolean; watching?: boolean; liveRegistered?: boolean; unregister?: () => void; idle?: NodeJS.Timeout };
+type Retained = { key: string; worker: Worker; rust?: RustSnapshot; scratch: string; dead?: boolean; watching?: boolean; liveRegistered?: boolean; unregister?: () => void; idle?: NodeJS.Timeout };
 let retained: Retained | undefined;
 async function dispose() {
   const old = retained; retained = undefined;
   if (!old) return;
   clearTimeout(old.idle); old.unregister?.();
+  await old.rust?.destroy();
   await old.worker.terminate();
   await rm(old.scratch, { recursive: true, force: true });
 }
@@ -105,16 +107,43 @@ async function decode(params: Record<string, unknown>, cache: NetworkStore, sign
       if (signal?.aborted) throw new Error('Request cancelled');
       const reused = !!retained;
       if (!retained) {
-        const scratch = await mkdtemp(join(cache.root, 'decode-'));
+        let scratch = await mkdtemp(join(cache.root, 'decode-'));
+        let rust: RustSnapshot | undefined, rustFallback: string | undefined;
+        let nativeLoadMs = 0;
         try {
-          const worker = new Worker(new URL('./network-worker.js', import.meta.url), { workerData: { ...params, scratch, retain: !!key, measure: !!observe },
+          if (snapshot && rustMode() === 'rust') {
+            if (snapshot.fileKey !== selection.fileKey) throw new Error('Selection file does not match capture');
+            try { const start = performance.now(); rust = await RustSnapshot.open(cache.root, snapshot, scratch, signal); nativeLoadMs = performance.now() - start; }
+            catch (error) {
+              if (signal?.aborted || (error instanceof Error && /timed out/.test(error.message))) throw error;
+              // Transactional compatibility fallback: no partial index/result is published.
+              rustFallback = error instanceof Error ? error.message : 'Rust initialization failed';
+              await rm(scratch, {recursive:true,force:true});
+              scratch = await mkdtemp(join(cache.root, 'decode-'));
+            }
+          }
+          if (signal?.aborted) throw new Error('Request cancelled');
+          const shared = rust ? new SharedArrayBuffer(RUST_PACKET_BYTES + 8) : undefined;
+          const worker = new Worker(new URL('./network-worker.js', import.meta.url), { workerData: { ...params, scratch, rustFallback, rust: rust ? {shared,loaded:rust.loaded,pid:rust.pid,nativeLoadMs} : undefined, retain: !!key, measure: !!observe },
             resourceLimits: { maxOldGenerationSizeMb: 128, maxYoungGenerationSizeMb: 16, stackSizeMb: 4 } });
-          retained = { key: key ?? '', worker, scratch, unregister: cache.onInvalidate(releaseNetworkSelection) };
+          retained = { key: key ?? '', worker, scratch, rust, unregister: cache.onInvalidate(releaseNetworkSelection) };
+          if (rust && shared) {
+            const native = rust, state = new Int32Array(shared,0,2), output = new Uint8Array(shared,8);
+            worker.on('message', async msg => {
+              if (!msg.rustRequest) return;
+              let reply;
+              try { reply = await native.request(msg.rustRequest, true); }
+              catch (error) { reply = {error:error instanceof Error ? error.message : 'Rust request failed'}; }
+              let bytes = Buffer.isBuffer(reply) ? reply : Buffer.from(JSON.stringify(reply));
+              if (bytes.length > output.length) bytes = Buffer.from(JSON.stringify({error:'Rust response limit exceeded'}));
+              output.set(bytes); Atomics.store(state,1,bytes.length); Atomics.store(state,0,1); Atomics.notify(state,0);
+            });
+          }
           // Idle failures invalidate the reader; active requests also have their own handlers.
           const entry = retained;
           worker.on('error', () => { entry.dead = true; });
-          worker.on('exit', () => { entry.dead = true; });
-        } catch (error) { await rm(scratch, { recursive: true, force: true }); throw error; }
+          worker.on('exit', () => { entry.dead = true; void entry.rust?.destroy(); });
+        } catch (error) { await rust?.destroy(); await rm(scratch, { recursive: true, force: true }); throw error; }
       }
       const { worker } = retained;
       worker.ref();
@@ -130,6 +159,7 @@ async function decode(params: Record<string, unknown>, cache: NetworkStore, sign
         const fail = (error: Error) => finish(error);
         const exited = () => finish(new Error('Network decoder exited without a result'));
         const message = (msg: any) => {
+          if (msg.rustRequest) return;
           if (msg.measurement) {
             try { observe?.(msg.measurement); } catch { /* Diagnostics cannot change request success. */ }
           } else finish(msg.error ? new Error(msg.error) : undefined, msg.result);
@@ -169,7 +199,7 @@ async function decode(params: Record<string, unknown>, cache: NetworkStore, sign
               const fail = (error: Error) => finish(error);
               const exited = () => finish(new Error('Live worker exited'));
               const abort = () => finish(new Error('STALE: observation ended during update'));
-              const message = (msg: any) => finish(msg.liveApplied ? undefined : new Error(msg.error || 'Invalid live worker reply'));
+              const message = (msg: any) => { if (!msg.rustRequest) finish(msg.liveApplied ? undefined : new Error(msg.error || 'Invalid live worker reply')); };
               const timer = setTimeout(() => finish(new Error('Live update timed out')), 10000);
               worker.on('message', message); worker.once('error', fail); worker.once('exit', exited);
               freshness.addEventListener('abort', abort, { once: true });
