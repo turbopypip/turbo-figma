@@ -1,6 +1,20 @@
+# Dependencies, build output and local runtime data
 node_modules/
-.local/
-artifacts/
-*.log
-.cache/
+/dist/
 /rust/helper/target/
+/.local/
+/.cache/
+/artifacts/
+*.log
+.DS_Store
+
+# Local planning, reports and research materials
+/ДОРАБОТКИ.md
+/TASK.md
+/TODO*.md
+/RUST-MIGRATION.md
+/TEST_REPORT.md
+/AGENTS.md
+/docs/
+/ideas/
+/experiments/
