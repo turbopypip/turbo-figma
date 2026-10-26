@@ -27,7 +27,7 @@ async function setup(t,respond=mockBrowser){
  return {...server,secret,ws,call:async(arguments_=args)=>server.client.callTool({name:'get_design_context',arguments:arguments_})};
 }
 
-async function capture(s){const sender=createCaptureSender(s.ws,{fileKey:'test',sessionId:'native',generation:1});await sender.begin();const header=Buffer.alloc(12);header.write('fig-wire');header.writeUInt32LE(1,8);const schemaRecord={version:1,kind:'ws-received',session:'main',requestId:'stream',eventSequence:0,opcode:2,payload:Buffer.concat([header,zstd(encodeBinarySchema(schema))]).toString('base64')};
+async function capture(s, sessionId='native'){const sender=createCaptureSender(s.ws,{fileKey:'test',sessionId,generation:1});await sender.begin();const header=Buffer.alloc(12);header.write('fig-wire');header.writeUInt32LE(1,8);const schemaRecord={version:1,kind:'ws-received',session:'main',requestId:'stream',eventSequence:0,opcode:2,payload:Buffer.concat([header,zstd(encodeBinarySchema(schema))]).toString('base64')};
  const nodes=[{guid:g(1),phase:'CREATED',type:'FRAME',name:'Root',stackMode:'VERTICAL'},...Array.from({length:3},(_,i)=>({guid:g(i+2),phase:'CREATED',type:'RECTANGLE',name:`Child ${i}`,parentIndex:{guid:g(1),position:String(i)}}))];
  const records=[schemaRecord,message({type:'JOIN_START'},1),message({type:'NODE_CHANGES',nodeChanges:nodes},2),message({type:'JOIN_END'},3)];for(const r of records)await sender.append(bytes(r));await sender.finish({schemaReceived:true,joinStarted:true,joinEnded:true,receivedParts:4,droppedParts:0,sequenceComplete:true});return sender;}
 test('server Rust owns live revisions, selection, stale tokens, corruption and invalidation',native,async t=>{
@@ -106,4 +106,34 @@ test('cache inventory recognizes new and pre-rename ownership markers',native,as
   s.ws.send(JSON.stringify({type:'cache-control',id,action:'cache-info'}));
   const result=await response;assert.equal(result.error,undefined);assert.equal(result.result.generations,1);assert.equal(result.result.protectedEntries,0);
  }
+});
+
+test('reconnect requires recapture and rejects old pagination after live updates',native,async t=>{
+ const s=await setup(t);
+ assert.equal((await s.status()).readReady,false);
+ assert.equal((await s.status()).nextAction,'reload_and_capture');
+ const sender=await capture(s);
+ assert.equal((await s.status()).readReady,true);
+ assert.equal((await s.call()).isError,undefined);
+ await sender.delta(bytes(message({type:'NODE_CHANGES',nodeChanges:[{guid:g(2),name:'Live'}]},4)));
+ const first=JSON.parse((await s.call()).content[0].text);
+ assert.ok(first.traversal.continuation);
+ const pending=sender.delta(bytes(message({type:'NODE_CHANGES',nodeChanges:[{guid:g(3),name:'Interrupted'}]},5)));
+ const interrupted=assert.rejects(pending,/disconnected|closed/i);
+ const closed=once(s.ws,'close');s.ws.terminate();await closed;await interrupted;
+ const until=Date.now()+3000;
+ while((await s.status()).connected){if(Date.now()>until)throw Error('disconnect timeout');await new Promise(r=>setTimeout(r,10));}
+ assert.equal((await s.status()).readReady,false);
+ assert.equal((await s.status()).nextAction,'connect');
+ const ws=await pair(s.port,s.secret,mockBrowser,'test');t.after(()=>ws.terminate());
+ const status=await s.status();assert.equal(status.connected,true);assert.equal(status.readReady,false);
+ assert.equal(status.snapshotState,'capture_required');assert.equal(status.nextAction,'reload_and_capture');
+ assert.match(status.message,/Перезагрузить и захватить/);
+ assert.equal((await s.call({...args,continuation:first.traversal.continuation})).isError,true);
+ const next=await capture({...s,ws},'recaptured');t.after(()=>next.cancel());
+ assert.equal((await s.status()).readReady,true);
+ assert.equal((await s.call({...args,continuation:first.traversal.continuation})).isError,true);
+ const fresh=await s.call();assert.equal(fresh.isError,undefined);
+ const page=JSON.parse(fresh.content[0].text);
+ assert.equal((await s.call({...args,continuation:page.traversal.continuation})).isError,undefined);
 });

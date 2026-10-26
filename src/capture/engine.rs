@@ -718,6 +718,13 @@ impl Handle {
         ready_rx.recv()?.map_err(|e| e.to_string())?;
         Ok(Self { lease, sender: tx })
     }
+    /// Read observation readiness without waiting behind a long-running decode.
+    pub fn observed(&self, file: Option<&str>) -> bool {
+        self.lease.lock().unwrap().as_ref().is_some_and(|lease| {
+            file.is_some_and(|file| lease.snapshot["fileKey"] == file)
+                && Instant::now() < lease.expires
+        })
+    }
     pub async fn call(&self, q: Value) -> std::result::Result<Value, String> {
         if q["op"] == "disconnect" {
             *self.lease.lock().unwrap() = None;
@@ -795,6 +802,12 @@ mod tests {
             handle.lease.lock().unwrap().as_ref().unwrap().expires
                 > Instant::now() + Duration::from_secs(10)
         );
+        assert!(handle.observed(Some("test")));
+        assert!(!handle.observed(Some("other")));
+        assert!(!handle.observed(None));
+        handle.lease.lock().unwrap().as_mut().unwrap().expires = Instant::now();
+        assert!(!handle.observed(Some("test")));
+        handle.lease.lock().unwrap().as_mut().unwrap().expires = Instant::now() + Duration::from_secs(15);
         let mut forged = q;
         forged["message"]["snapshot"]["generation"] = json!(2);
         assert!(runtime.block_on(handle.call(forged)).is_err());

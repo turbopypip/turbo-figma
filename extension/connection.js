@@ -10,7 +10,16 @@ export function createConnection(chrome, { WebSocket = globalThis.WebSocket, tim
   let currentState = 'disconnected', message = 'Отключено';
   const connectionState = state => { currentState = state; onState(state); };
   const setStatus = text => { message = text; };
-  const snapshot = () => ({ state: currentState, message: currentState === 'busy' ? 'Выполняется запрос MCP…' : message, tabId, fileKey, busy, capture: collector?.status || { state: 'unavailable', message: 'Для захвата требуется разрешение debugger и Chrome 125+.' } });
+  const snapshot = () => {
+    const capture = collector?.status || { state: 'unavailable', message: 'Для захвата требуется разрешение debugger и Chrome 125+.' };
+    const connected = currentState === 'connected';
+    const needsCapture = connected && ['idle', 'stopped', 'stale', 'error'].includes(capture.state);
+    return { state: currentState,
+      message: currentState === 'busy' ? 'Выполняется запрос MCP…' : needsCapture
+        ? 'Мост подключён. Для чтения актуального макета нажми «Перезагрузить и захватить». Прежнее чтение нужно начать заново.' : message,
+      tabId, fileKey, busy, readReady: connected && capture.state === 'ready',
+      capture: needsCapture ? { ...capture, message: `${capture.message} Нажми «Перезагрузить и захватить».` } : capture };
+  };
   const saveSession = () => persist(() => chrome.storage.session.set({ connection: { tabId, fileKey, wanted: !stopped, exportUncertain } }));
   const targetFile = tab => /^https:\/\/www\.figma\.com\/(design|file)\/([^/?#]+)/.exec(tab?.url || '')?.[2];
   async function invoke(method, params) {
@@ -98,7 +107,9 @@ export function createConnection(chrome, { WebSocket = globalThis.WebSocket, tim
     let node;
     try { node = await invoke('begin_export', { ...params, marker, format }); }
     catch (error) {
-      if (method === 'get_screenshot' && error.nativeCopyStarted === false) { exportUncertain = false; await saveSession(); }
+      // A proven preparation failure cannot leave a late clipboard result.
+      // Missing/true evidence remains uncertain, including after worker restart.
+      if (error.nativeCopyStarted === false) { exportUncertain = false; await saveSession(); }
       throw error;
     }
     const deadline = Date.now() + 20_000;

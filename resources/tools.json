@@ -7,7 +7,7 @@
   "tools": [
     {
       "name": "get_connection_status",
-      "description": "Check whether the Figma browser extension is currently authenticated and connected to this MCP server, including busy state and timestamps. Show the message to the user when asked for connection status or before starting Figma work. Works while disconnected or busy; does not activate/read Figma, export, or touch the clipboard. This is a snapshot of the bridge, not verification that the Figma tab is ready.",
+      "description": "Check whether the Figma browser extension is currently authenticated and connected to this MCP server, including busy state, timestamps, readReady, snapshotState and nextAction. Reconnection alone does not restore an observed snapshot: follow reload_and_capture and restart reading without old continuation tokens. Show the message to the user when asked for connection status or before starting Figma work. Works while disconnected or busy; does not activate/read Figma, export, or touch the clipboard. This is a snapshot of the bridge, not verification that the Figma tab is ready.",
       "inputSchema": {
         "$schema": "http://json-schema.org/draft-07/schema#",
         "type": "object",

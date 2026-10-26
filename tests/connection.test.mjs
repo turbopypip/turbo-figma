@@ -89,6 +89,8 @@ test('real WebSocket bridge restarts and background reconnects without replay',a
     process.kill(bridge.transport.pid,'SIGKILL');await bridge.close();await wait(()=>f.states.at(-1)==='connecting');
     bridge=await createNativeServer(secret,port);await wait(()=>f.states.at(-1)==='connected');
     assert.equal(f.requests,0);assert.equal((await bridge.status()).connected,true);
+    assert.equal((await bridge.status()).readReady,false);
+    assert.equal((await bridge.status()).nextAction,'reload_and_capture');
   } finally {await f.controller.control({action:'disconnect'});await bridge.close();}
 });
 test('popup close only stops UI refresh; information goes directly to README',async()=>{
@@ -211,7 +213,7 @@ test('popup cache button sends one explicit clear command and keeps cache feedba
   assert.equal(element('status').textContent,'Подключено');
 });
 
-test('screenshot preparation failure before Copy as allows retry, without changing export policy', async () => {
+for (const method of ['get_screenshot', 'export_asset']) test(`${method} preparation failure before Copy as allows retry`, async () => {
   const f=await fixture({port:3055,secret},target);
   f.chrome.windows={update:async()=>{}}; f.chrome.tabs.update=async()=>{};
   f.chrome.scripting.executeScript=async({args:[method]})=> method==='begin_export'
@@ -219,7 +221,7 @@ test('screenshot preparation failure before Copy as allows retry, without changi
     : [{result:{result:{id:'1:1'}}}];
   const ws=f.sockets[0];ws.open();await ws.message({type:'ready'});
   for(const id of ['first','retry']) {
-    await ws.message({type:'request',id,method:'get_screenshot',params:{nodeId:'1:1'}});
+    await ws.message({type:'request',id,method,params:{nodeId:'1:1',format:'PNG'}});
     assert.match(ws.sent.at(-1).error,/Copy as unavailable/);
     assert.equal(f.stored.connection.exportUncertain,false);
   }
@@ -242,4 +244,75 @@ test('failed screenshot selection preserves connection and never navigates or st
   }
   assert.deepEqual(methods,['select_node','select_node']);
   assert.ok(updates.every(options=>!options.url));
+});
+
+for (const nativeCopyStarted of [true, undefined]) test(`uncertain PNG failure (${nativeCopyStarted}) blocks exports and survives worker restart`, async () => {
+  const f=await fixture({port:3055,secret},target);
+  f.chrome.windows={update:async()=>{}}; f.chrome.tabs.update=async()=>{};
+  let copies=0;
+  f.chrome.scripting.executeScript=async()=>{copies++;return [{result:{error:'Copy outcome unknown',nativeCopyStarted}}];};
+  const ws=f.sockets[0];ws.open();await ws.message({type:'ready'});
+  await ws.message({type:'request',id:'first',method:'export_asset',params:{nodeId:'1:1',format:'PNG'}});
+  assert.match(ws.sent.at(-1).error,/Copy outcome unknown/);
+  assert.equal(f.stored.connection.exportUncertain,true);
+  for (const [method,format] of [['export_asset','PNG'],['export_asset','SVG'],['get_screenshot','PNG']]) {
+    await ws.message({type:'request',id:method+format,method,params:{nodeId:'1:2',format}});
+    assert.match(ws.sent.at(-1).error,/Previous native copy/);
+  }
+  assert.equal(copies,1);
+  const restored=await fixture(f.local.pairing,f.stored.connection);
+  const next=restored.sockets[0];next.open();await next.message({type:'ready'});
+  await next.message({type:'request',id:'after-restart',method:'export_asset',params:{nodeId:'1:2',format:'PNG'}});
+  assert.match(next.sent.at(-1).error,/Previous native copy/);
+  assert.equal(restored.requests,0);
+});
+
+test('real batch continues after PNG preparation failure and allows retry, screenshot and SVG', async () => {
+  const {WebSocket}=await import('ws');
+  const {createNativeServer}=await import('./native-server.mjs');
+  const {PNG}=await import('./helpers.mjs');
+  const bridge=await createNativeServer(secret);
+  const f=await fixture({port:bridge.port,secret},target,{WebSocket,timers:globalThis});
+  let fail=true;const copies=[];
+  f.chrome.windows={update:async()=>{}};f.chrome.tabs.update=async()=>{};
+  f.chrome.scripting.executeScript=async({func,args:[method,params]})=>{
+    if(func.name==='readDownloadCapture')return [{result:{data:btoa('<svg xmlns="http://www.w3.org/2000/svg"/>')}}];
+    if(func.name==='installDownloadCapture')return [{result:{}}];
+    if(method==='begin_export'){
+      copies.push(params.nodeId);
+      if(fail && params.nodeId==='1:1'){fail=false;return [{result:{error:'Copy as unavailable',nativeCopyStarted:false}}];}
+      return [{result:{result:{id:params.nodeId}}}];
+    }
+    if(method==='read_export')return [{result:{result:{nodeId:params.nodeId,name:'Image',format:'PNG',data:PNG}}}];
+    return [{result:{result:{id:params?.nodeId,name:'Image'}}}];
+  };
+  try {
+    const until=Date.now()+3000;
+    while((await f.controller.control({action:'status'})).state!=='connected'){
+      if(Date.now()>until)throw Error('connection timeout');await new Promise(r=>setTimeout(r,10));
+    }
+    const exported=await bridge.client.callTool({name:'export_assets',arguments:{nodeIds:['1:1','1:2'],format:'PNG'}});
+    const batch=JSON.parse(exported.content[0].text);
+    assert.match(batch.results[0].error,/Copy as unavailable/);
+    assert.equal(batch.results[1].error,undefined);
+    const retry=JSON.parse((await bridge.client.callTool({name:'export_assets',arguments:{nodeIds:['1:1'],format:'PNG'}})).content[0].text);
+    assert.equal(retry.results[0].error,undefined);
+    assert.deepEqual(copies,['1:1','1:2','1:1']);
+    assert.equal(f.stored.connection.exportUncertain,false);
+    const {readFile}=await import('node:fs/promises');
+    assert.deepEqual(await readFile(batch.results[1].path),Buffer.from(PNG,'base64'));
+    // Browser-level screenshot check avoids the separate MCP snapshot prerequisite.
+    const browser=await fixture({port:3055,secret},target);
+    browser.chrome.windows=f.chrome.windows;browser.chrome.tabs.update=f.chrome.tabs.update;
+    browser.chrome.scripting.executeScript=f.chrome.scripting.executeScript;
+    const ws=browser.sockets[0];ws.open();await ws.message({type:'ready'});
+    fail=true;
+    await ws.message({type:'request',id:'failed',method:'export_asset',params:{nodeId:'1:1',format:'PNG'}});
+    assert.match(ws.sent.at(-1).error,/Copy as unavailable/);
+    for(const [method,format] of [['get_screenshot','PNG'],['export_asset','SVG']]) {
+      await ws.message({type:'request',id:method,method,params:{nodeId:'1:1',format}});
+      assert.equal(ws.sent.at(-1).error,undefined);
+      assert.equal(ws.sent.at(-1).result.format,format);
+    }
+  } finally {await f.controller.control({action:'disconnect'});await bridge.close();}
 });

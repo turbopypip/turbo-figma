@@ -130,6 +130,18 @@ impl Server {
         let busy =
             connected && (b.pending.is_some() || b.capture_busy || b.capture_work || b.cache_busy);
         let mut v = json!({"mcp":"running","connected":connected,"busy":busy,"state":if !connected{"disconnected"}else if busy{"busy"}else{"connected"},"checkedAt":now(),"connectedAt":if connected{b.connected.clone()}else{None},"disconnectedAt":b.disconnected,"message":if !connected{"Расширение Figma не подключено. Открой макет и нажми значок расширения; сохранённый ключ загрузится автоматически. Если вкладка подключения уже открыта, дождись восстановления связи или нажми «Подключить»."}else if busy{"Figma подключена, выполняется запрос."}else{"Расширение Figma подключено."},"scope":"Authenticated browser bridge connection only; Figma tab availability and export readiness are not checked."});
+        let observed = connected
+            && b.capture_error.is_none()
+            && b.expires.is_some_and(|expires| Instant::now() < expires)
+            && self.engine.observed(b.peer.as_ref().and_then(|p| p.file.as_deref()));
+        let reading = self.read_busy.load(Ordering::SeqCst);
+        v["readReady"] = json!(observed && !busy && !reading);
+        v["snapshotState"] = json!(if b.capture_busy && connected { "capturing" } else if observed { "ready" } else { "capture_required" });
+        v["nextAction"] = json!(if !connected { "connect" } else if busy || reading { "wait" } else if !observed { "reload_and_capture" } else { "read" });
+        v["scope"] = json!("Authenticated browser bridge and observed snapshot readiness for the paired file; selection, tab availability and export readiness are not checked.");
+        if connected && !busy && !reading && !observed {
+            v["message"] = json!("Мост Figma подключён, но актуального снимка нет. Нажми «Перезагрузить и захватить» в расширении; после захвата начни чтение заново, без прежнего continuation.");
+        }
         if let Some(last) = &b.last {
             v["lastDisconnect"] = last.clone();
         }

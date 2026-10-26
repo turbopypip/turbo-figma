@@ -173,6 +173,24 @@ test('connection routes capture into disk store and disconnect removes debugger 
 
   await connection.tabChanged(7,{url:'https://www.figma.com/design/other/File'},{id:7,url:'https://www.figma.com/design/other/File'});
   assert.equal(detaches,1);assert.equal((await connection.control({action:'status'})).capture.state,'stale');
+  await connection.control({action:'connect',tabId:7,port:bridge.port,secret});
+  await wait(async()=>(await connection.control({action:'status'})).state==='connected');
+  const recovered=await connection.control({action:'status'});
+  assert.equal(recovered.readReady,false);
+  assert.match(recovered.message,/Перезагрузить и захватить/);
+  assert.match(recovered.capture.message,/Перезагрузить и захватить/);
+  assert.equal((await bridge.status()).readReady,false);
+  // A fresh worker restores the bridge from storage, but has no observation.
+  await connection.control({action:'disconnect'});
+  stored.session.connection.wanted=true;
+  const restored=createConnection(chrome,{WebSocket});
+  t.after(()=>restored.control({action:'disconnect'}));
+  await restored.ready;
+  await wait(async()=>(await restored.control({action:'status'})).state==='connected');
+  const resumed=await restored.control({action:'status'});
+  assert.equal(resumed.capture.state,'idle');assert.equal(resumed.readReady,false);
+  assert.match(resumed.message,/Перезагрузить и захватить/);
+
 });
 
 test('capture popup routes explicit start/stop and describes experimental status and permission',async()=>{
