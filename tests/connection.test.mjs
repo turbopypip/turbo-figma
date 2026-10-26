@@ -17,13 +17,12 @@ async function fixture(pairing, session, overrides={}) {
     close(code=1000){this.readyState=3;this.onclose?.({code});}
     message(msg){return this.onmessage({data:JSON.stringify(msg)});}
   }
-  const chrome={storage:{local:area(local),session:area(stored)},alarms:{create:async()=>{},clear:async()=>{}},
+  const chrome={debugger:{attach:async()=>{},detach:async()=>{},sendCommand:async()=>{}},storage:{local:area(local),session:area(stored)},alarms:{create:async()=>{},clear:async()=>{}},
     tabs:{get:async id=>({id,url:'https://www.figma.com/design/test/name'})},
     scripting:{executeScript:async()=>{requests++;return [{result:{result:{ok:true}}}];}}};
   const clock={setTimeout:(fn,delay)=>{timers.set(++next,{fn,delay});return next;},clearTimeout:id=>timers.delete(id),
     setInterval:(fn,delay)=>{intervals.set(++next,{fn,delay});return next;},clearInterval:id=>intervals.delete(id)};
-  if (overrides.createCollector) chrome.debugger = {};
-  const controller=createConnection(chrome,{WebSocket:Socket,timers:clock,onState:s=>states.push(s),...overrides});
+  const controller=createConnection(chrome,{WebSocket:Socket,timers:clock,onState:s=>states.push(s),createCollector:()=>undefined,...overrides});
   await controller.ready;
   return {controller,chrome,states,local,stored,sockets,timers,intervals,get requests(){return requests;},
     connect:()=>controller.control({action:'connect',tabId:7,port:3055,secret}),
@@ -64,14 +63,6 @@ test('auth rejection stops retry; stale socket ignored; closed target disconnect
   f.sockets.at(-1).close(1008);await flush();assert.equal(f.states.at(-1),'error');assert.equal(f.stored.connection.wanted,false);
   await f.controller.wake();assert.equal(f.sockets.length,2);
   await f.connect();await f.controller.tabChanged(7,{},undefined);assert.equal(f.states.at(-1),'disconnected');
-});
-test('uncertain export survives worker restart until Figma reload',async()=>{
-  const f=await fixture({port:3055,secret},{...target,exportUncertain:true});
-  const ws=f.sockets[0];ws.open();await ws.message({type:'ready'});
-  await ws.message({type:'request',id:'png',method:'get_screenshot'});
-  assert.match(ws.sent.at(-1).error,/Previous native copy/);assert.equal(f.requests,0);
-  await f.controller.tabChanged(7,{status:'loading'},{id:7,url:'https://www.figma.com/design/test/a'});
-  assert.equal(f.stored.connection.exportUncertain,false);
 });
 test('badge text, color and tooltip track serialized final state',async()=>{
   const values={};const action=Object.fromEntries(['setBadgeBackgroundColor','setBadgeText','setTitle'].map(key=>[key,async v=>{values[key]=v;}]));
@@ -214,108 +205,28 @@ test('popup cache button sends one explicit clear command and keeps cache feedba
   assert.equal(element('status').textContent,'Подключено');
 });
 
-for (const method of ['get_screenshot', 'export_asset']) test(`${method} preparation failure before Copy as allows retry`, async () => {
-  const f=await fixture({port:3055,secret},target);
-  f.chrome.windows={update:async()=>{}}; f.chrome.tabs.update=async()=>{};
-  f.chrome.scripting.executeScript=async({args:[method]})=> method==='begin_export'
-    ? [{result:{error:'Copy as unavailable',nativeCopyStarted:false}}]
-    : [{result:{result:{id:'1:1'}}}];
-  const ws=f.sockets[0];ws.open();await ws.message({type:'ready'});
-  for(const id of ['first','retry']) {
-    await ws.message({type:'request',id,method,params:{nodeId:'1:1',format:'PNG'}});
-    assert.match(ws.sent.at(-1).error,/Copy as unavailable/);
-    assert.equal(f.stored.connection.exportUncertain,false);
-  }
-});
-
-test('failed screenshot selection preserves connection and never navigates or starts native copy', async () => {
-  const f=await fixture({port:3055,secret},target);
-  const updates=[], methods=[];
-  f.chrome.windows={update:async()=>{}};
-  f.chrome.tabs.update=async(id,options)=>updates.push(options);
-  f.chrome.scripting.executeScript=async({args:[method]})=>{
-    methods.push(method);return [{result:{error:'Screenshot ancestor is not available on the current page'}}];
-  };
-  const ws=f.sockets[0];ws.open();await ws.message({type:'ready'});
-  for(const id of ['first','retry']) {
-    await ws.message({type:'request',id,method:'get_screenshot',params:{url:'https://www.figma.com/design/test/name?node-id=1-1',ancestors:['0:1']}});
-    assert.match(ws.sent.at(-1).error,/Screenshot ancestor/);
-    assert.equal(ws.readyState,1);
-    assert.equal((await f.controller.control({action:'status'})).state,'connected');
-  }
-  assert.deepEqual(methods,['select_node','select_node']);
-  assert.ok(updates.every(options=>!options.url));
-});
-
-for (const nativeCopyStarted of [true, undefined]) test(`uncertain PNG failure (${nativeCopyStarted}) blocks exports and survives worker restart`, async () => {
-  const f=await fixture({port:3055,secret},target);
-  f.chrome.windows={update:async()=>{}}; f.chrome.tabs.update=async()=>{};
-  let copies=0;
-  f.chrome.scripting.executeScript=async()=>{copies++;return [{result:{error:'Copy outcome unknown',nativeCopyStarted}}];};
-  const ws=f.sockets[0];ws.open();await ws.message({type:'ready'});
-  await ws.message({type:'request',id:'first',method:'export_asset',params:{nodeId:'1:1',format:'PNG'}});
-  assert.match(ws.sent.at(-1).error,/Copy outcome unknown/);
-  assert.equal(f.stored.connection.exportUncertain,true);
-  for (const [method,format] of [['export_asset','PNG'],['export_asset','SVG'],['get_screenshot','PNG']]) {
-    await ws.message({type:'request',id:method+format,method,params:{nodeId:'1:2',format}});
-    assert.match(ws.sent.at(-1).error,/Previous native copy/);
-  }
-  assert.equal(copies,1);
-  const restored=await fixture(f.local.pairing,f.stored.connection);
-  const next=restored.sockets[0];next.open();await next.message({type:'ready'});
-  await next.message({type:'request',id:'after-restart',method:'export_asset',params:{nodeId:'1:2',format:'PNG'}});
-  assert.match(next.sent.at(-1).error,/Previous native copy/);
-  assert.equal(restored.requests,0);
-});
-
-test('real batch continues after PNG preparation failure and allows retry, screenshot and SVG', async () => {
-  const {WebSocket}=await import('ws');
-  const {createNativeServer}=await import('./native-server.mjs');
-  const {PNG}=await import('./helpers.mjs');
-  const bridge=await createNativeServer(secret);
-  const f=await fixture({port:bridge.port,secret},target,{WebSocket,timers:globalThis});
-  let fail=true;const copies=[];
-  f.chrome.windows={update:async()=>{}};f.chrome.tabs.update=async()=>{};
-  f.chrome.scripting.executeScript=async({func,args:[method,params]})=>{
-    if(func.name==='readDownloadCapture')return [{result:{data:btoa('<svg xmlns="http://www.w3.org/2000/svg"/>')}}];
-    if(func.name==='installDownloadCapture')return [{result:{}}];
-    if(method==='begin_export'){
-      copies.push(params.nodeId);
-      if(fail && params.nodeId==='1:1'){fail=false;return [{result:{error:'Copy as unavailable',nativeCopyStarted:false}}];}
-      return [{result:{result:{id:params.nodeId}}}];
-    }
-    if(method==='read_export')return [{result:{result:{nodeId:params.nodeId,name:'Image',format:'PNG',data:PNG}}}];
-    return [{result:{result:{id:params?.nodeId,name:'Image'}}}];
-  };
-  try {
-    const until=Date.now()+3000;
-    while((await f.controller.control({action:'status'})).state!=='connected'){
-      if(Date.now()>until)throw Error('connection timeout');await new Promise(r=>setTimeout(r,10));
-    }
-    const exported=await bridge.client.callTool({name:'export_assets',arguments:{nodeIds:['1:1','1:2'],format:'PNG'}});
-    const batch=JSON.parse(exported.content[0].text);
-    assert.match(batch.results[0].error,/Copy as unavailable/);
-    assert.equal(batch.results[1].error,undefined);
-    const retry=JSON.parse((await bridge.client.callTool({name:'export_assets',arguments:{nodeIds:['1:1'],format:'PNG'}})).content[0].text);
-    assert.equal(retry.results[0].error,undefined);
-    assert.deepEqual(copies,['1:1','1:2','1:1']);
-    assert.equal(f.stored.connection.exportUncertain,false);
-    const {readFile}=await import('node:fs/promises');
-    assert.deepEqual(await readFile(batch.results[1].path),Buffer.from(PNG,'base64'));
-    // Browser-level screenshot check avoids the separate MCP snapshot prerequisite.
-    const browser=await fixture({port:3055,secret},target);
-    browser.chrome.windows=f.chrome.windows;browser.chrome.tabs.update=f.chrome.tabs.update;
-    browser.chrome.scripting.executeScript=f.chrome.scripting.executeScript;
-    const ws=browser.sockets[0];ws.open();await ws.message({type:'ready'});
-    fail=true;
-    await ws.message({type:'request',id:'failed',method:'export_asset',params:{nodeId:'1:1',format:'PNG'}});
-    assert.match(ws.sent.at(-1).error,/Copy as unavailable/);
-    for(const [method,format] of [['get_screenshot','PNG'],['export_asset','SVG']]) {
-      await ws.message({type:'request',id:method,method,params:{nodeId:'1:1',format}});
-      assert.equal(ws.sent.at(-1).error,undefined);
-      assert.equal(ws.sent.at(-1).result.format,format);
-    }
-  } finally {await f.controller.control({action:'disconnect'});await bridge.close();}
+for (const method of ['get_screenshot', 'export_asset']) test(`${method} exports natively and never activates a tab or window`, async () => {
+ const f=await fixture({port:3055,secret},target), calls=[], commands=[];
+ f.chrome.windows={update:async()=>{throw Error('Must not focus window');}};
+ f.chrome.tabs.update=async()=>{throw Error('Must not activate/navigate tab');};
+ f.chrome.debugger.sendCommand=async(target,method,args)=>commands.push([method,args.enabled]);
+ let failures=1;
+ f.chrome.scripting.executeScript=async({func,args})=>{
+  if(func.name==='installDownloadCapture') return [{result:null}];
+  if(func.name==='readDownloadCapture') return [{result:args[2]?null:{data:'png',scale:1,scaleBasis:'native-export'}}];
+  calls.push(args[0]);
+  if(args[0]==='prepare_export' && failures-->0) return [{result:{error:'Export unavailable'}}];
+  return [{result:{result:{id:'1:1',name:'Banner'}}}];
+ };
+ const ws=f.sockets[0];ws.open();await ws.message({type:'ready'});
+ const params={url:'https://www.figma.com/design/test/name?node-id=1-1',nodeId:'1:1',format:'PNG',ancestors:['0:1']};
+ await ws.message({type:'request',id:'failure',method,params});
+ assert.match(ws.sent.at(-1).error,/Export unavailable/);
+ await ws.message({type:'request',id:'retry',method,params});
+ assert.equal(ws.sent.at(-1).error,undefined);
+ assert.equal(ws.sent.at(-1).result.scaleBasis,'native-export');
+ assert.ok(!calls.includes('begin_export') && !calls.includes('read_export'));
+ assert.deepEqual(commands.map(c=>c[1]),[true,false,true,false]);
 });
 
 test('explicit connect captures after auth, survives popup close, and disconnect stops capture', async () => {
@@ -369,6 +280,6 @@ for (const method of ['get_screenshot','export_asset']) test(`${method} forwards
  const ws=f.sockets[0];ws.open();await ws.message({type:'ready'});
  await ws.message({type:'request',id:'path',method,params:{url:'https://www.figma.com/design/test/name?node-id=1-1',nodeId:'1:1',format:'PNG',ancestors:['0:1','0:2']}});
  assert.deepEqual(calls[0],{action:'select_node',params:{nodeId:'1:1',ancestors:['0:1','0:2']}});
- assert.equal(calls[1].action,'begin_export');
+ assert.equal(calls[1].action,'prepare_export');
  assert.ok(updates.every(o=>!o.url));
 });

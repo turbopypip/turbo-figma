@@ -34,7 +34,7 @@ fn decode(v: &Value) -> Result<Vec<u8>> {
         )?;
     }
     if let Some(s) = v.get("scaleBasis") {
-        check(s == "clipboard", "Invalid image scale basis")?;
+        check(s == "clipboard" || s == "native-export", "Invalid image scale basis")?;
     }
     let s = field(v, "data", 4 * 1024 * 1024)?;
     let b = STANDARD.decode(s).map_err(|_| "Invalid base64 image")?;

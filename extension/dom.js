@@ -1,7 +1,6 @@
 // Self-contained: Chrome serializes this function into an isolated content-script world.
 // No private Figma runtime, cookies, REST endpoints, or document writes.
 export async function figmaAction(method, params, fileKey) {
-  let nativeCopyStarted = false;
   try {
     if (['get_design_context', 'get_selection'].includes(method)) throw new Error('UI design context was removed; use the network snapshot.');
     const url = new URL(location.href);
@@ -126,9 +125,9 @@ export async function figmaAction(method, params, fileKey) {
       }
     }
 
-    if (['read_export', 'assert_selection', 'download_svg'].includes(method) && (!params.nodeId || describe(one()).id !== params.nodeId))
+    if (['assert_selection', 'download_export'].includes(method) && (!params.nodeId || describe(one()).id !== params.nodeId))
       throw new Error('Selection changed during export. Retry.');
-    if (params.nodeId && !['read_export', 'assert_selection', 'download_svg'].includes(method)) {
+    if (params.nodeId && !['assert_selection', 'download_export'].includes(method)) {
       const row = params.mountedOnly ? mounted(params.nodeId) : await findRow(params.nodeId);
       if (!row) throw new Error('Node not found among expanded Layers. Open its page and retry with a fresh network capture.');
       if (selected().length !== 1 || describe(one()).id !== params.nodeId) {
@@ -141,7 +140,7 @@ export async function figmaAction(method, params, fileKey) {
     const node = describe(one());
     const assertSelection = () => { if (selected().length !== 1 || describe(one()).id !== node.id) throw new Error('Selection changed during request. Retry.'); };
     if (method === 'assert_selection' || method === 'select_node') return { result: node };
-    if (method === 'prepare_svg') {
+    if (method === 'prepare_export') {
       const getFormats = () => [...document.querySelectorAll('[data-testid="export-inspection-panel"] [role="combobox"]')].filter(el =>
         (el.getAttribute('aria-label') || el.getAttribute('data-tooltip')) === 'Export file type');
       if (!getFormats().length) {
@@ -151,62 +150,30 @@ export async function figmaAction(method, params, fileKey) {
       }
       const formats = await waitFor(() => { const items = getFormats(); return items.length ? items : null; });
       if (formats.length !== 1) throw new Error('Keep exactly one export setting in the Export panel.');
-      if (label(formats[0]) !== 'SVG' && !formats[0].textContent.trim().match(/^SVG(?:SVG)?$/)) {
+      if (label(formats[0]) !== (params.format || 'SVG') && ![params.format || 'SVG', (params.format || 'SVG').repeat(2)].includes(formats[0].textContent.trim())) {
         activate(formats[0]);
-        const option = await waitFor(() => [...document.querySelectorAll('[role="option"]')].find(el => visible(el) && label(el) === 'SVG'));
+        const option = await waitFor(() => [...document.querySelectorAll('[role="option"]')].find(el => visible(el) && label(el) === (params.format || 'SVG')));
         activate(option);
+      }
+      if (params.format === 'PNG') {
+        const scaleInput = await waitFor(() => document.querySelector('[data-testid="export-inspection-panel"] input[role="spinbutton"]'), 'Export scale is unavailable');
+        if ((scaleInput.getAttribute('aria-valuetext') || scaleInput.value) !== '1x') {
+          const panel = document.querySelector('[data-testid="export-inspection-panel"]');
+          const toggle = [...panel.querySelectorAll('button')].find(el => label(el) === 'Select an option');
+          if (!toggle) throw new Error('Export scale selector is unavailable');
+          activate(toggle);
+          const option = await waitFor(() => [...document.querySelectorAll('[role="option"],[role="menuitemradio"],[role="menuitemcheckbox"],[role="menuitem"]')].find(el => visible(el) && label(el) === '1x'), '1x export option is unavailable');
+          activate(option);
+          await waitFor(() => document.querySelector('[data-testid="export-inspection-panel"] input[role="spinbutton"]')?.getAttribute('aria-valuetext') === '1x', 'Export scale did not become 1x');
+        }
       }
       assertSelection(); return { result: node };
     }
-    if (method === 'download_svg') {
+    if (method === 'download_export') {
       const command = button(`Export ${node.name}`);
       if (!command) throw new Error('SVG export button is unavailable.');
       activate(command); return { result: node };
     }
-    if (method === 'begin_export') {
-      if (params.format !== 'PNG') throw new Error('Unsupported export format');
-      await waitFor(() => document.hasFocus(), 'Keep the Figma tab focused during export.');
-      const panel = document.querySelector('[data-testid="properties-inspection-panel"]');
-      const dimensions = [...(panel?.querySelectorAll('button') || [])].map(el => el.getAttribute('aria-label') || '')
-        .filter(label => /^Copy (Width|Height):/.test(label)).map(label => Number(label.split(':')[1].replace(/[^\d.]/g, '')));
-      if (params.format === 'PNG' && dimensions.length === 2 && dimensions[0] * dimensions[1] > 16_000_000)
-        throw new Error('Layer exceeds 16 megapixels. Select a smaller layer before copying PNG.');
-      // Overwrite before reading so existing clipboard contents are never returned to MCP.
-      await navigator.clipboard.writeText(params.marker);
-      one().dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2 }));
-      const copyAs = await waitFor(() => [...document.querySelectorAll('[role="menu"] [id]')].find(el => label(el) === 'Copy as'));
-      hover(copyAs);
-      const command = await waitFor(() => [...document.querySelectorAll('[id]')].find(el => el.id.startsWith(`layerMenu-copy-as-${params.format.toLowerCase()}-`) && visible(el)));
-      if (command.getAttribute('aria-disabled') === 'true') throw new Error('Figma does not allow copying this layer.');
-      nativeCopyStarted = true;
-      activate(command);
-      return { result: node };
-    }
-    if (method === 'read_export') {
-      if (params.format !== 'PNG') throw new Error('Clipboard export supports PNG only.');
-      // Native copy may briefly move focus to a helper frame.
-      if (!document.hasFocus()) return { result: null };
-      const items = await navigator.clipboard.read();
-      const item = items.find(item => item.types.includes('image/png'));
-      if (!item) return { result: null };
-      const blob = await item.getType('image/png');
-      // Bound decoding memory as well as final output. Native Figma copy itself cannot be cancelled.
-      if (blob.size > 12 * 1024 * 1024) throw new Error('Source PNG exceeds 12 MiB. Select a smaller layer.');
-      const header = new DataView(await blob.slice(0, 24).arrayBuffer());
-      const width = header.getUint32(16), height = header.getUint32(20);
-      if (!width || !height || width * height > 16_000_000) throw new Error('Source PNG exceeds 16 megapixels. Select a smaller layer.');
-      const bitmap = await createImageBitmap(blob);
-      try {
-        const scale = Math.min(params.scale || 1, 2048 / Math.max(width, height));
-        const canvas = document.createElement('canvas');
-        canvas.width = Math.max(1, Math.round(width * scale)); canvas.height = Math.max(1, Math.round(height * scale));
-        canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-        const data = canvas.toDataURL('image/png').split(',')[1];
-        if (data.length > 4 * 1024 * 1024) throw new Error('PNG exceeds 3 MiB. Select a smaller layer.');
-        assertSelection();
-        return { result: { nodeId: node.id, name: node.name, format: 'PNG', data, scale, scaleBasis: 'clipboard' } };
-      } finally { bitmap.close(); }
-    }
     throw new Error('Unsupported browser operation');
-  } catch (error) { return { error: error.message || 'Browser operation failed', ...(method === 'begin_export' ? { nativeCopyStarted } : {}) }; }
+  } catch (error) { return { error: error.message || 'Browser operation failed' }; }
 }

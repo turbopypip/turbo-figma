@@ -1,10 +1,11 @@
 import { createNetworkCollector } from './network-collector.js';
 import { figmaAction } from './dom.js';
 import { parseSelectionLink } from './link.js';
+import { withBackgroundRendering } from './background-render.js';
 import { installDownloadCapture, readDownloadCapture } from './download.js';
 
 export function createConnection(chrome, { WebSocket = globalThis.WebSocket, timers = globalThis, onState = () => {}, createCollector = createNetworkCollector } = {}) {
-  let tabId, fileKey, socket, heartbeat, busy = false, exportUncertain = false;
+  let tabId, fileKey, socket, heartbeat, busy = false;
   let cacheRequest, captureConnection, captureOnReady = false;
   const collector = chrome.debugger ? createCollector(chrome) : undefined;
   let currentState = 'disconnected', message = 'Отключено';
@@ -20,7 +21,7 @@ export function createConnection(chrome, { WebSocket = globalThis.WebSocket, tim
       tabId, fileKey, busy, readReady: connected && capture.state === 'ready',
       capture: needsCapture ? { ...capture, message: `${capture.message} Нажми «Подключить».` } : capture };
   };
-  const saveSession = () => persist(() => chrome.storage.session.set({ connection: { tabId, fileKey, wanted: !stopped, exportUncertain } }));
+  const saveSession = () => persist(() => chrome.storage.session.set({ connection: { tabId, fileKey, wanted: !stopped } }));
   const targetFile = tab => /^https:\/\/www\.figma\.com\/(design|file)\/([^/?#]+)/.exec(tab?.url || '')?.[2];
   async function invoke(method, params) {
     const results = await chrome.scripting.executeScript({ target: { tabId }, func: figmaAction, args: [method, params, fileKey] });
@@ -38,56 +39,16 @@ export function createConnection(chrome, { WebSocket = globalThis.WebSocket, tim
   }
   async function request(method, params, connection) {
     if (!['get_screenshot', 'export_asset'].includes(method)) throw new Error('Unsupported MCP method');
-    if (params.url) {
-      const tab = await chrome.tabs.get(tabId);
-      await chrome.windows.update(tab.windowId, { focused: true });
-      await chrome.tabs.update(tabId, { active: true });
-    }
-    if (params.url) {
-      const target = parseSelectionLink(params.url, fileKey, params.nodeId);
-      let ready = false;
-      // Figma may retain its existing selection on same-file URL navigation.
-      // Prefer selecting the exact linked ID through Layers when already mounted.
-      try { await invoke('select_node', { nodeId: target.nodeId, ...(Array.isArray(params.ancestors) ? { ancestors: params.ancestors } : { mountedOnly: true }) }); ready = true; }
-      catch (error) {
-        // Navigation destroys the observed snapshot. Screenshot selection must
-        // succeed in the current document or fail without ending the capture.
-        if (method === 'get_screenshot' || Array.isArray(params.ancestors)) throw error;
-        // Asset export retains its existing link navigation fallback.
-      }
-      if (!ready) {
-        const currentTab = await chrome.tabs.get(tabId);
-        const currentUrl = new URL(currentTab.url || 'about:blank');
-        const sameTarget = currentUrl.origin === 'https://www.figma.com' && currentUrl.pathname.split('/')[2] === fileKey &&
-          (currentUrl.searchParams.get('node-id') || '').replaceAll('-', ':') === target.nodeId;
-        await chrome.tabs.update(tabId, sameTarget ? { active: true } : { url: target.url, active: true });
-        const until = Date.now() + 6000;
-        while (Date.now() < until) {
-          if (connection !== socket || connection.readyState !== WebSocket.OPEN) throw new Error('Connection closed.');
-          try { await invoke('select_node', { nodeId: target.nodeId, ...(Array.isArray(params.ancestors) ? { ancestors: params.ancestors } : { mountedOnly: true }) }); ready = true; break; }
-          catch { /* Same-file navigation can briefly unload the document. */ }
-          await new Promise(resolve => timers.setTimeout(resolve, 150));
-        }
-        if (!ready) {
-          try { await invoke('select_node', { nodeId: target.nodeId, ...(Array.isArray(params.ancestors) ? { ancestors: params.ancestors } : {}) }); ready = true; } catch { /* Report the exact limitation. */ }
-        }
-      }
-      if (!ready) throw new Error('Linked node is not available in Layers yet. Retry after the file loads; if its ancestors remain collapsed, retry with a fresh network capture.');
-      params = { ...params, nodeId: target.nodeId };
-    }
-    if (!['get_screenshot', 'export_asset'].includes(method)) return invoke(method, params);
-    if (exportUncertain) throw new Error('Previous native copy did not finish reliably. Reload Figma and reconnect using the extension icon before exporting again.');
-    // Clipboard operations require focus. Only the tab explicitly paired by the user is activated.
-    const tab = await chrome.tabs.get(tabId);
-    await chrome.windows.update(tab.windowId, { focused: true });
-    await chrome.tabs.update(tabId, { active: true });
-    const marker = `turbo-figma-export:${crypto.randomUUID()}`;
     const format = method === 'get_screenshot' ? 'PNG' : params.format;
-    if (format === 'SVG') {
-      const node = await invoke('prepare_svg', params);
-      await nativeDownload(installDownloadCapture, [marker, fileKey]);
+    if (!['PNG', 'SVG'].includes(format)) throw new Error('Unsupported export format');
+    const target = params.url ? parseSelectionLink(params.url, fileKey, params.nodeId) : { nodeId: params.nodeId };
+    return withBackgroundRendering(chrome, tabId, collector?.attachedTo?.(tabId) === true, async () => {
+      const node = await invoke('select_node', { nodeId: target.nodeId, ancestors: params.ancestors || [] });
+      await invoke('prepare_export', { nodeId: node.id, format });
+      const marker = `turbo-figma-export:${crypto.randomUUID()}`;
+      await nativeDownload(installDownloadCapture, [marker, fileKey, format, params.scale || 1]);
       try {
-        await invoke('download_svg', { nodeId: node.id });
+        await invoke('download_export', { nodeId: node.id });
         const deadline = Date.now() + 20_000;
         while (Date.now() < deadline) {
           if (connection !== socket || connection.readyState !== WebSocket.OPEN) throw new Error('Connection closed; export stopped.');
@@ -95,31 +56,13 @@ export function createConnection(chrome, { WebSocket = globalThis.WebSocket, tim
           if (result?.error) throw new Error(result.error);
           if (result?.data) {
             await invoke('assert_selection', { nodeId: node.id });
-            return { nodeId: node.id, name: node.name, format: 'SVG', data: result.data };
+            return { nodeId: node.id, name: node.name, format, ...result };
           }
           await new Promise(resolve => timers.setTimeout(resolve, 200));
         }
-        throw new Error('Native SVG export timed out. No SVG was received.');
-      } finally { await nativeDownload(readDownloadCapture, [marker, fileKey, true]).catch(() => {}); }
-    }
-    exportUncertain = true;
-    await saveSession();
-    let node;
-    try { node = await invoke('begin_export', { ...params, marker, format }); }
-    catch (error) {
-      // A proven preparation failure cannot leave a late clipboard result.
-      // Missing/true evidence remains uncertain, including after worker restart.
-      if (error.nativeCopyStarted === false) { exportUncertain = false; await saveSession(); }
-      throw error;
-    }
-    const deadline = Date.now() + 20_000;
-    while (Date.now() < deadline) {
-      if (connection !== socket || connection.readyState !== WebSocket.OPEN) throw new Error('Connection closed; export stopped.');
-      const image = await invoke('read_export', { ...params, nodeId: node.id, marker, format });
-      if (image) { exportUncertain = false; await saveSession(); return image; }
-      await new Promise(resolve => timers.setTimeout(resolve, 200));
-    }
-    throw new Error('Figma copy timed out. Keep the tab focused and check that Copy as is permitted.');
+        throw new Error('Native export timed out. No file was received.');
+      } finally { await nativeDownload(readDownloadCapture, [marker, fileKey, true]); }
+    });
   }
   let credentials, retryTimer, attempt = 0, stopped = true;
   let storageWork = Promise.resolve();
@@ -248,7 +191,7 @@ export function createConnection(chrome, { WebSocket = globalThis.WebSocket, tim
     const [{ pairing }, { connection }] = await Promise.all([chrome.storage.local.get('pairing'), chrome.storage.session.get('connection')]);
     credentials = validCredentials(pairing) ? pairing : undefined;
     if (!connection) return;
-    tabId = connection.tabId; fileKey = connection.fileKey; exportUncertain = !!connection.exportUncertain;
+    tabId = connection.tabId; fileKey = connection.fileKey;
     const tab = await chrome.tabs.get(tabId).catch(() => undefined);
     if (connection.wanted && credentials && fileKey && targetFile(tab) === fileKey) {
       stopped = false;
@@ -287,7 +230,6 @@ export function createConnection(chrome, { WebSocket = globalThis.WebSocket, tim
         const candidate = { port: input.port, secret: input.secret || credentials?.secret };
         if (!file || !validCredentials(candidate)) throw new Error('Открой макет Figma и проверь порт и секрет.');
         await stop();
-        if (tabId !== tab.id || fileKey !== file) exportUncertain = false;
         tabId = tab.id; fileKey = file; credentials = candidate; attempt = 0; stopped = false; captureOnReady = true;
         await saveSession();
         await chrome.alarms.create('bridge-reconnect', { periodInMinutes: 1 });
@@ -313,7 +255,7 @@ export function createConnection(chrome, { WebSocket = globalThis.WebSocket, tim
       await stop(); await saveSession(); setStatus('Вкладка Figma закрыта или открыла другой файл.');
     } else if (change.status === 'loading') {
       if (!collector?.navigation(change)) await collector?.stop('Вкладка перезагружается; прежний захват неполон.');
-      if (!busy) { exportUncertain = false; await saveSession(); }
+      if (!busy) await saveSession();
     }
   }
   connectionState('disconnected');

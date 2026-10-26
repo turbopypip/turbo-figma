@@ -200,6 +200,7 @@ export function createNetworkCollector(chrome, { createSender = createCaptureSen
   return {
     get status() { return { ...status }; },
     get active() { return !!current; },
+    attachedTo(tabId) { return !!current && !current.closed && current.attached && current.tabId === tabId; },
     navigation(change = {}) {
       if (!current || current.closed) return false;
       // tabs.onUpdated may report delayed loading after JOIN_END. Page.frameNavigated

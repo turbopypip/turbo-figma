@@ -44,3 +44,22 @@ function zipSvg() {
   end.writeUInt32LE(local.length + name.length + data.length, 16);
   return Buffer.concat([local, name, data, central, name, end]);
 }
+
+for(const bad of [false,true]) test(`PNG native capture validates and scales without clipboard (invalid=${bad})`,async()=>{
+ class Anchor {click(){throw Error('Unexpected download');}}
+ const bytes=Buffer.alloc(24);Buffer.from([137,80,78,71,13,10,26,10]).copy(bytes);
+ bytes.writeUInt32BE(bad?20000:4000,16);bytes.writeUInt32BE(1000,20);
+ let decoded=0,closed=0;const canvas={getContext:()=>({drawImage(){}}),toDataURL:()=> 'data:image/png;base64,cG5n'};
+ const context=vm.createContext({location:{origin:'https://www.figma.com',pathname:'/design/file/Test'},HTMLAnchorElement:Anchor,
+ window:{addEventListener(){},removeEventListener(){}},setTimeout,clearTimeout,Uint8Array,TextDecoder,AbortController,DataView,Blob,DecompressionStream,
+ fetch:async()=>new Response(bytes),document:{createElement:()=>canvas},createImageBitmap:async()=>{decoded++;return {close:()=>closed++};}});
+ const install=vm.runInContext(`(${installDownloadCapture.toString()})`,context),read=vm.runInContext(`(${readDownloadCapture.toString()})`,context);
+ install('request','file','PNG',1);
+ try{
+  Object.assign(new Anchor(),{href:'blob:https://www.figma.com/export',download:'Banner.png'}).click();
+  for(let i=0;i<100&&!context.__turboFigmaNativeDownload?.result&&!context.__turboFigmaNativeDownload?.error;i++)await new Promise(r=>setTimeout(r,5));
+  const result=read('request','file');
+  if(bad){assert.match(result.error,/16 megapixels/);assert.equal(decoded,0);}
+  else{assert.equal(result.data,'cG5n');assert.equal(result.scale,0.512);assert.equal(result.scaleBasis,'native-export');assert.equal(canvas.width,2048);assert.equal(canvas.height,512);assert.equal(closed,1);}
+ }finally{read('request','file',true);}
+});

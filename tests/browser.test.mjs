@@ -4,9 +4,9 @@ import vm from 'node:vm';
 import { readFile } from 'node:fs/promises';
 import { figmaAction } from '../extension/dom.js';
 
-function browserFixture({ url = 'https://www.figma.com/design/test/File', selectedId = '1:1', clipboard = '', focused = true, capture, exportCollapsed = false, tooltipValue } = {}) {
+function browserFixture({ url = 'https://www.figma.com/design/test/File', selectedId = '1:1', clipboard = '', focused = true, capture, exportCollapsed = false, exportFormat = 'SVG', exportScale = '1x', tooltipValue } = {}) {
   const calls = { read: 0, write: 0, click: 0 };
-  let exportOpen = false;
+  let exportOpen = false, scaleMenu = false;
   const labeled = (text, selected = null) => ({
     getClientRects: () => [1],
     textContent: text + text,
@@ -31,12 +31,17 @@ function browserFixture({ url = 'https://www.figma.com/design/test/File', select
   }
   const document = {
     hasFocus: () => focused,
-    querySelector: () => ({ getAttribute: () => 'Figma Design, 1 item selected' }),
+    querySelector: selector => {
+      if(selector.includes('input[role="spinbutton"]')) return {get value(){return exportScale;},getAttribute:()=>exportScale};
+      if(selector === '[data-testid="export-inspection-panel"]') return {querySelectorAll:()=>[{...labeled('Select an option'),getBoundingClientRect:()=>({left:0,top:0,width:10,height:10}),dispatchEvent(){},click(){scaleMenu=true;}}]};
+      return {getAttribute:()=> 'Figma Design, 1 item selected'};
+    },
     querySelectorAll: selector => {
       if (selector === '[role="row"]') return rows;
       if (selector === '[role="tab"]') return [labeled('Properties', 'true')];
       if (selector === 'button,[role="button"]') return exportCollapsed ? [{ ...labeled('Export'), getBoundingClientRect: () => ({left:0,top:0,width:10,height:10}), dispatchEvent: event => { if (event.type === 'mousedown') exportOpen = true; }, click: () => { calls.click++; } }] : [labeled(`Node ${selectedId}`)];
-      if (selector === '[data-testid="export-inspection-panel"] [role="combobox"]') return exportOpen ? [{ ...labeled('SVG'), getAttribute: key => key === 'data-tooltip' ? 'Export file type' : null }] : [];
+      if (selector === '[data-testid="export-inspection-panel"] [role="combobox"]') return exportOpen ? [{ ...labeled(exportFormat), getAttribute: key => key === 'data-tooltip' ? 'Export file type' : null }] : [];
+      if(selector.includes('[role="menuitemradio"]')) return scaleMenu ? [{...labeled('1x'),getBoundingClientRect:()=>({left:0,top:0,width:10,height:10}),dispatchEvent(){},click(){exportScale='1x';}}] : [];
       if (selector === '[data-testid$="inspection-panel"]') return [panel];
       throw new Error(`Unexpected DOM query ${selector}`);
     },
@@ -62,20 +67,14 @@ test('browser rejects another file/origin, missing nodes, and changed export sel
   }
   const { run, calls } = browserFixture();
   assert.match((await run('select_node', { nodeId: 'missing' })).error, /not found/);
-  assert.match((await run('read_export', { nodeId: '2:1', format: 'PNG' })).error, /Selection changed/);
+  assert.match((await run('assert_selection', { nodeId: '2:1', format: 'PNG' })).error, /Selection changed/);
   assert.equal(calls.read, 0);
   assert.equal(calls.click, 0);
 });
 
-test('export waits without reading clipboard while Figma is unfocused', async () => {
-  const { run, calls } = browserFixture({ focused: false, clipboard: '<svg/>' });
-  assert.equal((await run('read_export', { nodeId: '1:1', format: 'PNG' })).result, null);
-  assert.equal(calls.read, 0);
-});
-
 test('extension declares debugger for capture without adding broad host permissions', async () => {
   const manifest = JSON.parse(await readFile('extension/manifest.json', 'utf8'));
-  assert.deepEqual(manifest.permissions.sort(), ['activeTab', 'alarms', 'clipboardRead', 'clipboardWrite', 'debugger', 'scripting', 'storage']);
+  assert.deepEqual(manifest.permissions.sort(), ['activeTab', 'alarms', 'debugger', 'scripting', 'storage']);
   assert.equal(manifest.minimum_chrome_version, '125');
   assert.equal(manifest.host_permissions, undefined);
   assert.equal(manifest.content_scripts, undefined);
@@ -84,7 +83,7 @@ test('extension declares debugger for capture without adding broad host permissi
 
 test('SVG preparation opens a collapsed Export panel through pointer/mouse activation', async () => {
   const { run, calls } = browserFixture({ exportCollapsed: true });
-  const result = await run('prepare_svg');
+  const result = await run('prepare_export', {format:'SVG'});
   assert.equal(result.result.id, '1:1');
   assert.equal(calls.click, 1);
 });
@@ -111,4 +110,11 @@ test('selection expands collapsed ancestors root first before selecting the targ
   assert.equal(result.error, undefined);
   assert.equal(result.result.id, 'target');
   assert.deepEqual(clicks, ['expand:outer','expand:inner','target']);
+});
+
+test('PNG preparation resets a previous 2x setting through the native scale menu',async()=>{
+ const {run}=browserFixture({exportCollapsed:true,exportFormat:'PNG',exportScale:'2x'});
+ const result=await run('prepare_export',{format:'PNG'});
+ assert.equal(result.error,undefined);
+ assert.equal(result.result.id,'1:1');
 });
