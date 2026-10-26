@@ -1,3 +1,4 @@
+import { nativeCommand } from './native-command.js';
 import { RustSnapshot, RUST_PACKET_BYTES, rustMode } from './network-rust.js';
 import { loadVariables, variablesFingerprint } from './variables.js';
 import { mapNetworkNodeVariables } from './network-variables.js';
@@ -83,10 +84,12 @@ async function decode(params: Record<string, unknown>, cache: NetworkStore, sign
         for await (const chunk of createReadStream(params.captureFile as string, { signal })) hash.update(chunk);
         source = [params.captureFile, hash.digest('hex')];
       }
-      const variables = query.variablesFile ? await loadVariables(query.variablesFile) : undefined;
+      const nativeVariables = query.variablesFile && snapshot && cache.native && rustMode() === "rust" ? await nativeCommand("--uikit",{op:"load",path:query.variablesFile}) : undefined;
+      const variables = query.variablesFile && !nativeVariables ? await loadVariables(query.variablesFile) : undefined;
+      const variableFingerprint = nativeVariables?.fingerprint ?? (variables ? variablesFingerprint(variables) : undefined);
       if (variables && (variables.size>8192 || [...variables.keys()].some(name=>name.length>256)))
         throw new Error('Network UI-kit limit: at most 8192 variables with names up to 256 characters');
-      const binding = paginationBinding([source,query.variablesFile ?? null,variables ? variablesFingerprint(variables) : null], query);
+      const binding = paginationBinding([source,query.variablesFile ?? null,variableFingerprint ?? null], query);
       let offset;
       try { offset = query.continuation ? continuationOffset(query.continuation, binding) : query.offset; }
       catch (error) {
@@ -227,9 +230,10 @@ async function decode(params: Record<string, unknown>, cache: NetworkStore, sign
         result.node = {id:result.rootId};
         result.limitations.push('Visual style limitations and native Figma variable resolution results are listed per node. UI-kit matches are computed from values, not native bindings.');
       }
+      if (nativeVariables) result.nodes = await nativeCommand("--uikit",{op:"map",variables:nativeVariables,nodes:result.nodes});
       if (variables) result.nodes = result.nodes.map((node:any)=>mapNetworkNodeVariables(node,variables));
-      result.variableMatching = {source:'ui-kit-value-match',enabled:!!variables, nativeBindings:'style.nativeBindings',
-        ...(variables ? {fingerprint:variablesFingerprint(variables)} : {})};
+      result.variableMatching = {source:'ui-kit-value-match',enabled:!!(variables || nativeVariables), nativeBindings:'style.nativeBindings',
+        ...(variableFingerprint ? {fingerprint:variableFingerprint} : {})};
       // Bound the complete JSON result, including diagnostics, metrics and the continuation.
       const finalize = () => {
         const next = offset + result.nodes.length;

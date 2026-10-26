@@ -290,20 +290,22 @@ impl Decoder {
         bytes: &[u8],
         visit: &mut impl FnMut(Value) -> Result<()>,
     ) -> Result<Value> {
-        self.decode_mode(bytes, visit, false)
+        self.decode_mode(bytes, visit, false, None)
     }
     pub fn decode_strict(
         &self,
         bytes: &[u8],
         visit: &mut impl FnMut(Value) -> Result<()>,
     ) -> Result<Value> {
-        self.decode_mode(bytes, visit, true)
+        self.decode_mode(bytes, visit, true, None)
     }
+    pub fn decode_service(&self, bytes: &[u8], sent: bool, visit: &mut impl FnMut(Value) -> Result<()>) -> Result<Value> { self.decode_mode(bytes, visit, false, Some(sent)) }
     fn decode_mode(
         &self,
         bytes: &[u8],
         visit: &mut impl FnMut(Value) -> Result<()>,
         strict: bool,
+        service: Option<bool>,
     ) -> Result<Value> {
         check(
             bytes.len() <= 64 * 1024 * 1024,
@@ -312,6 +314,8 @@ impl Decoder {
         let mut state = State {
             decoder: self,
             strict,
+            service,
+            message_fields: Vec::new(),
             r: Reader {
                 data: bytes,
                 pos: 0,
@@ -322,7 +326,8 @@ impl Decoder {
             inside: false,
             visit,
         };
-        let v = state.read(self.message as i32, true, 0)?;
+        let mut v = state.read(self.message as i32, true, 0)?;
+        if service.is_some() { if let Value::Object(ref mut fields) = v { fields.push(("wireFields".into(),Value::Array(state.message_fields.iter().cloned().map(Value::String).collect()))); } }
         check(state.r.pos == bytes.len(), "Trailing wire message bytes")?;
         Ok(v)
     }
@@ -330,6 +335,8 @@ impl Decoder {
 struct State<'a, 'b, F> {
     decoder: &'a Decoder,
     strict: bool,
+    service: Option<bool>,
+    message_fields: Vec<String>,
     r: Reader<'b>,
     operations: usize,
     node_start: usize,
@@ -340,6 +347,7 @@ struct State<'a, 'b, F> {
 impl<F: FnMut(Value) -> Result<()>> State<'_, '_, F> {
     fn tick(&mut self) -> Result<()> {
         self.operations += 1;
+        if self.operations % 4096 == 0 {crate::engine::check_cancel()?;}
         check(
             self.operations <= 32000000,
             "Wire message operation limit exceeded",
@@ -452,7 +460,15 @@ impl<F: FnMut(Value) -> Result<()>> State<'_, '_, F> {
             };
             self.tick()?;
             let stream = depth == 0 && d.name == "Message" && f.name == "nodeChanges";
-            let retain = keep && f.retain;
+            let retain = if let Some(sent) = self.service {
+                if depth == 0 {
+                    check(["type","nodeChanges","signalName","signalPayload","sentTimestamp","clientRenderedMetadata","nodeChangeOrder","broadcasts","userChanges"].contains(&f.name.as_str()),"Unsupported live message field")?;
+                    self.message_fields.push(f.name.clone());
+                }
+                if d.name == "UserChange" {check(["sessionID","stableSessionID","connected","name","color","imageURL","viewport","selection","deviceName","userID","canWrite","connectedAtTimeS","mouse","observing","heartbeat","clientID","scrollPositions","focusedSlideId","designFullPageViewState","recentClicks","textCursor","textSelection","focusOnTextCursor"].contains(&f.name.as_str()),"Unsupported user presence field")?;}
+                if d.name == "ClientBroadcast" {check(["sessionID","cursorReaction","timer","presenter","prototypePresenter","music"].contains(&f.name.as_str()),"Unsupported client broadcast field")?;}
+                keep && if d.name == "Message" { f.name=="type" || f.name=="signalName" || sent && f.name=="userChanges" } else if d.name=="UserChange" {sent && f.name=="selection"} else {f.retain}
+            } else {keep && f.retain};
             if self.strict {
                 check(
                     !(d.name == "Message" && f.name != "type" && f.name != "nodeChanges")

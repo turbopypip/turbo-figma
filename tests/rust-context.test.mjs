@@ -136,3 +136,12 @@ test('retained Rust verification rechecks all parts, rejects writes and supports
   abort.abort();await assert.rejects(pending,/cancel/i);assert.throws(()=>process.kill(s.pid,0));
  }
 }));
+test('native public-page cache invalidates on mutations and selection changes',native,async()=>session(async s=>{
+ const q={op:'contextQuery',id:'1:1',fileKey:'corpus',depth:12,maxNodes:500,maxBytes:150000,offset:0,includeHidden:false,format:'context',applied:0};
+ const call=async q=>{const r=await s.request(q);assert.equal(r.error,undefined);return r.result;};
+ const original=await call(q);assert.deepEqual(await call(q),original);
+ const child=await call({op:'node',id:'1:2'});await call({op:'upsert',node:{...child,name:'Changed in cache',visible:false}});
+ const hidden=await call(q);assert.equal(hidden.nodes.some(n=>n.id==='1:2'),false);
+ assert.equal((await call({...q,includeHidden:true})).nodes.find(n=>n.id==='1:2').name,'Changed in cache');
+ await call({op:'select',id:'1:2'});await call({op:'upsert',node:child});assert.deepEqual(await call(q),original);
+}));

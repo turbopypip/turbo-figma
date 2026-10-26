@@ -1,7 +1,7 @@
 use base64::{engine::general_purpose::STANDARD, Engine};
 use serde_json::{json, Value};
 use std::{
-    fs::{self, File, OpenOptions},
+    fs::{self, OpenOptions},
     io::{self, Read, Write},
     path::Path,
 };
@@ -75,7 +75,7 @@ fn decode(v: &Value) -> Result<Vec<u8>> {
     }
     Ok(b)
 }
-fn command(q: &Value) -> Result<Value> {
+pub fn command(q: &Value) -> Result<Value> {
     let v = &q["image"];
     let bytes = decode(v)?;
     if q["op"] == "decode" {
@@ -91,7 +91,7 @@ fn command(q: &Value) -> Result<Value> {
     check(q["op"] == "write", "Unknown asset operation")?;
     let root = Path::new(q["root"].as_str().ok_or("Invalid asset root")?);
     check(
-        root.is_absolute() && fs::canonicalize(root)? == root,
+        root.is_absolute() && crate::platform::canonicalize(root)? == root,
         "Asset directory was replaced",
     )?;
     let normalized: String = v["name"]
@@ -120,7 +120,7 @@ fn command(q: &Value) -> Result<Value> {
         stem.push_str("asset");
     }
     let mut random = [0u8; 16];
-    File::open("/dev/urandom")?.read_exact(&mut random)?;
+    crate::platform::random(&mut random)?;
     let suffix: String = random.iter().map(|b| format!("{b:02x}")).collect();
     let target = root.join(format!(
         "figma-{stem}-{suffix}.{}",

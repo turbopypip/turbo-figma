@@ -1,3 +1,13 @@
+mod platform;
+mod standalone;
+mod engine;
+mod inspector;
+mod uikit;
+mod instances;
+mod geometry;
+mod variable_resolver;
+mod bindings;
+mod traversal;
 mod assets;
 mod angle;
 mod context;
@@ -23,6 +33,13 @@ const LIMIT: usize = 65536;
 // One bounded request per process. stdout is exclusively protocol data.
 fn main() -> io::Result<()> {
     let args: Vec<String> = std::env::args().collect();
+    if args.get(1).is_some_and(|s| s == "--server") {
+        let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build()?;
+        let result = runtime.block_on(standalone::run(args.get(2).map(String::as_str).unwrap_or(""),args.get(3).map(String::as_str).unwrap_or(".")));
+        runtime.shutdown_timeout(Duration::from_secs(2));
+        return result.map_err(|e|io::Error::other(e.to_string()));
+    }
+    if args.get(1).is_some_and(|s| s == "--uikit") { return uikit::run().map_err(|e| io::Error::other(e.to_string())); }
     #[cfg(unix)]
     if args.get(1).is_some_and(|s| s == "--mcp") {
         let runtime = tokio::runtime::Builder::new_current_thread()

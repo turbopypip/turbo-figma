@@ -5,7 +5,7 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::{
     collections::HashSet,
-    fs::{self, File, OpenOptions},
+    fs::{self, OpenOptions},
     io::{self, Read, Write},
     path::{Path, PathBuf},
     time::UNIX_EPOCH,
@@ -39,7 +39,7 @@ fn integer(v: &Value, lo: f64, hi: f64) -> bool {
     v.as_f64()
         .is_some_and(|n| n.fract() == 0. && n >= lo && n <= hi)
 }
-fn identity(v: &Value) -> bool {
+pub fn identity(v: &Value) -> bool {
     exact(v, &["fileKey", "sessionId", "generation"], &[])
         && v["fileKey"].as_str().is_some_and(|s| {
             !s.is_empty() && s.len() <= 256 && s.bytes().all(|b| b.is_ascii_alphanumeric())
@@ -65,7 +65,7 @@ fn frame(v: Option<&Value>) -> bool {
         exact(v, &["pageId", "frameId"], &[]) && guid(&v["pageId"]) && guid(&v["frameId"])
     })
 }
-fn key(v: &Value, f: Option<&Value>) -> Result<String> {
+pub fn key(v: &Value, f: Option<&Value>) -> Result<String> {
     check(identity(v) && frame(f), "Invalid snapshot identity")?;
     Ok(hash(&crate::json::bytes(&json!([
         v["fileKey"],
@@ -75,10 +75,10 @@ fn key(v: &Value, f: Option<&Value>) -> Result<String> {
         v["generation"]
     ]))?))
 }
-fn stamp(p: &Path) -> Result<String> {
+pub fn stamp(p: &Path) -> Result<String> {
     let m = fs::symlink_metadata(p)?;
     check(
-        m.is_dir() && !m.file_type().is_symlink() && fs::canonicalize(p)? == p,
+        m.is_dir() && !m.file_type().is_symlink() && crate::platform::canonicalize(p)? == p,
         "Unsafe cache directory",
     )?;
     #[cfg(unix)]
@@ -86,10 +86,11 @@ fn stamp(p: &Path) -> Result<String> {
         use std::os::unix::fs::MetadataExt;
         Ok(format!("{}:{}", m.dev(), m.ino()))
     }
-    #[cfg(not(unix))]
+    #[cfg(windows)]
     {
-        let _ = m;
-        Err("Native store directory identity is not supported on this platform".into())
+        let file = crate::platform::open_read(p, true)?;
+        let info = crate::platform::file_info(&file)?;
+        Ok(format!("{}:{}", info.volume, info.index))
     }
 }
 fn write(p: &Path, b: &[u8]) -> Result<()> {
@@ -105,8 +106,10 @@ fn write(p: &Path, b: &[u8]) -> Result<()> {
     f.sync_all()?;
     Ok(())
 }
-fn mkdir(p: &Path) -> Result<()> {
+pub fn mkdir(p: &Path) -> Result<()> {
     let mut b = fs::DirBuilder::new();
+    // Keep the builder mutable on both platforms.
+    b.recursive(false);
     #[cfg(unix)]
     {
         use std::os::unix::fs::DirBuilderExt;
@@ -116,7 +119,12 @@ fn mkdir(p: &Path) -> Result<()> {
     Ok(())
 }
 fn sync_dir(p: &Path) -> Result<()> {
-    File::open(p)?.sync_all()?;
+    // Windows cannot fsync a directory handle. Each payload and manifest is
+    // flushed before publication; no power-loss directory durability is promised.
+    #[cfg(unix)]
+    fs::File::open(p)?.sync_all()?;
+    #[cfg(windows)]
+    let _ = p;
     Ok(())
 }
 fn manifest(root: &Path, id: &Value, f: Option<&Value>) -> Result<Value> {
@@ -224,8 +232,10 @@ fn inventory(root: &Path) -> Result<(Vec<Value>, usize)> {
                     use std::os::unix::fs::MetadataExt;
                     m.nlink() == 1
                 };
-                #[cfg(not(unix))]
-                let one_link = true;
+                #[cfg(windows)]
+                let one_link = crate::platform::open_read(&file.path(), false)
+                    .and_then(|f| crate::platform::file_info(&f))
+                    .is_ok_and(|info| info.links == 1);
                 if !m.is_file() || m.file_type().is_symlink() || !one_link {
                     return Ok(None);
                 }
@@ -275,7 +285,7 @@ fn inventory(root: &Path) -> Result<(Vec<Value>, usize)> {
     }
     Ok((entries, protected))
 }
-fn command(q: &Value) -> Result<Value> {
+pub fn command(q: &Value) -> Result<Value> {
     let root = PathBuf::from(text(q, "root")?);
     check(root.is_absolute(), "Cache root must be absolute")?;
     let stamps = q["stamps"].as_array().ok_or("Directory stamps required")?;

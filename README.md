@@ -6,23 +6,37 @@
 
 **Статус: экспериментальный браузерный адаптер.** На macOS в реальном файле с правами View проверены все четыре MCP-инструмента, PNG/SVG-экспорт и подключение Kilo CLI. Обход баннера прочитал 128 уникальных узлов за 24,2 секунды и два запроса после раскрытия предков. Windows и выполнение задачи самой моделью пока не проверены. Подробные результаты и ограничения — в [TEST_REPORT.md](TEST_REPORT.md).
 
-**Миграция на Rust:** на macOS управляемые снимки теперь обрабатываются Rust-компонентом внутри рабочего MCP: чтение/проверка частей → Zstandard → Kiwi → дисковый индекс, поиск, связи и selection-кэш. Rust также выполняет файловые операции NetworkStore, строгий live decode/apply, проверку/запись ассетов и MCP stdio/WebSocket-транспорт. Rust вычисляет layout, визуальные стили, текстовые диапазоны и публичное представление узла. Node.js пока выполняет обход с раскрытием instances, разрешение переменных и UI-kit, а также сохраняет обработчики инструментов, pairing/capture coordination и lifecycle/read leases. Это ещё не полностью нативный сервер. Для сборки Rust: `npm run build:rust`, затем `npm run build` и перезапуск MCP. Явный возврат на Node: `FIGMA_NETWORK_BACKEND=node`. При отсутствии бинарника или несовместимости native-входа до публикации индекса работает Node fallback; `format: debug` показывает `metrics.backend` и `metrics.rustFallback`. Windows по умолчанию остаётся на Node до отдельной приёмки. [Отчёт о переносе и оставшихся частях](docs/rust-runtime-status.md), [план](TODO-rust-migration.md).
+**Rust runtime:** на macOS серверная логика выполняется автономным Rust-бинарником: MCP/WebSocket, pairing и capture, storage, Kiwi/Zstandard, дисковый индекс, обход с instances/overrides/scale, геометрия/layout/styles/text ranges, переменные/UI-kit, pagination, live/freshness и lifecycle. JavaScript остаётся в браузерном расширении, инструментах разработки и сохранённом Node fallback. `dist/index.js` теперь только выбирает и запускает backend; Rust не вызывает Node-обработчики. Сборка: `npm run build:rust` и `npm run build`, затем перезапуск MCP. Явный fallback через launcher: `FIGMA_NETWORK_BACKEND=node`; отсутствие бинарника тоже выбирает Node. Ошибка уже запущенного Rust-сервера не переигрывается в Node. Setup при готовой native-сборке генерирует прямой запуск бинарника без Node. Добавлен нативный Windows-запуск (`.exe`); macOS и Windows выбирают Rust при наличии сборки, Linux сохраняет прежний Node-default (Rust включается через `FIGMA_NETWORK_BACKEND=rust`). Реальный Windows-прогон пока не выполнен. [Текущий статус и проверки](docs/rust-runtime-status.md).
 
 ## Установка
 
-Нужны настольный Chrome или Яндекс Браузер, Node.js 20.12+ и установленный Kilo CLI. Команды выполняй из папки этого репозитория. Проверено на macOS; Windows 10/11 остаётся целевой, но пока не проверенной платформой.
+Нужны настольный Chrome или Яндекс Браузер и установленный Kilo CLI. Команды выполняй из папки этого репозитория. На Windows 10/11 x64 используй установщик (PowerShell 5.1+):
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -Assets "C:\Projects\site\public\figma"
+```
+
+[`install.ps1`](install.ps1) устанавливает недостающие Node.js, Rust 1.99.1 MSVC и C++ Build Tools/Windows SDK через `winget`, выполняет `npm ci`, release-сборку Rust и сборку TypeScript, затем создаёт конфигурацию MCP с прямым запуском `.exe`. Установка Build Tools может запросить права администратора; запуск сервера их не требует. Нужен `winget` (App Installer). Без `-Assets` сохраняется папка из существующего конфига, а при первой установке используется `.local/assets`. С готовыми зависимостями можно передать `-SkipDependencies`. Полные тесты установщик не запускает. Браузер и Kilo CLI устанавливаются отдельно.
+
+Не копируй с Mac `node_modules`, `dist`, `rust/helper/target` и `.local`: зависимости, бинарник и конфигурацию с Windows-путями нужно создать на Windows. Если переносишь через Git, включи новые исходники и `rust/helper/resources` в commit.
+
+Для ручной установки на macOS/Linux нужны Node.js 20.12+, Cargo/Rust 1.99.1 и системный C/C++ toolchain:
+
+```sh
+npm ci
+npm run build:rust
+npm run build
+npm run setup -- --assets "/absolute/path/to/site/public/figma"
+```
+
+На macOS проверены сборка и короткий MCP-сценарий; Windows-код прошёл проверку компилятора для MSVC target, запуск на Windows остаётся для ручной проверки.
+
+Дополнительные проверки (не обязательны для установки):
 
 ```powershell
 npm ci
 npm run check
 npm test
-npm run setup -- --assets "C:\Users\User\Проект\public\figma"
-```
-
-На macOS/Linux вместо последней команды используй свою абсолютную папку экспорта, например:
-
-```sh
-npm run setup -- --assets "/Users/your-name/projects/site/public/figma"
 ```
 
 `npm test` также собирает сервер в `dist/`; для сборки без тестов есть `npm run build`.
@@ -182,7 +196,13 @@ PNG: исходник не более 16 мегапикселей и 12 МиБ, 
 
 Для ручного captureFile это **сохранённое начальное состояние**, а не live-данные. Managed snapshot дополнительно поддерживает ограниченные входящие изменения при удерживаемом индексе; см. `freshness` и [границы live-режима](docs/network-live.md). Инструмент проверяет соответствие файла ссылке, наличие JOIN_START/JOIN_END, собирает начальные пакеты CREATED и игнорирует последующие изменения с явным счётчиком. По умолчанию возвращает контекст для вёрстки: свойства, `layout.css`/`cssText`, измерения в `measuredCss`, Fixed/Hug/Fill и координаты. Исходные технические записи доступны через `format: debug`; `copyText` не возвращается. Компоненты выбранной ветки раскрываются адресно с overrides; дочерние ID — устойчивые instance/source paths. Поддержанное подмножество, бюджет зависимостей и явные ошибки описаны в [docs/network-components.md](docs/network-components.md); полного rendered tree для произвольного файла не обещается. Паритет layout проверен на полной контрольной ветке из 103 видимых узлов; методика и ограничения — [docs/network-layout.md](docs/network-layout.md). Текстовые диапазоны, шрифты, paints, обводки, скругления, прозрачность и эффекты доступны в `style`; применимый CSS включён в обычный контекст. [Поддержка и ограничения стилей](docs/network-style.md). Подбор UI-kit поддержан через `variablesFile`; исходный CSS сохраняется в `resolvedValues`. Цвета нативных привязок Figma разрешаются до построения CSS и подбора UI-kit. Имена токенов Figma не передаются в обычном context; подробности доступны только в debug. Неразрешённый цвет обозначается явно. [Нативные переменные](docs/network-native-variables.md). [Переменные и UI-kit](docs/network-variables.md). Изображения и geometry blobs не разрешены. Это не эквивалент REST/Plugin API. Пропуски записи видны в `captureWarnings`, скрытые ветки по умолчанию исключены. Запрос ограничен глубиной, количеством узлов и бюджетом текста; данные макета остаются недоверенным содержимым.
 
-На macOS managed-вход, Zstandard, Kiwi и дисковый индекс выполняются в одном удерживаемом Rust-процессе; Node-worker формирует дизайн-контекст через ограниченные запросы к индексу. Полный документ в RAM не строится. Индекс переиспользуется для страниц текущей selection и освобождается при смене selection, отмене, ошибке, shutdown или 60 секундах простоя. Холодная Rust-загрузка ограничена 120 секундами, отдельная команда индекса — 10 секундами; projection-worker сохраняет свой таймаут 120 секунд. Legacy `captureFile` и compatibility fallback используют прежний Node-путь (`fzstd`, `kiwi-schema`). Для сборки helper нужен Rust 1.99.1; для запуска готового бинарника Cargo не нужен. Полный документ не пересылается модели: только выбранная ветка. Большие и неизвестные варианты протокола завершаются явной ошибкой.
+В автономном Rust-сервере один ограниченный actor владеет capture, файловыми операциями и индексом; MCP и WebSocket работают асинхронно. Полный документ в RAM не строится. Проверенный heartbeat обслуживается независимо от тяжёлого обхода. Индекс освобождается при смене selection, отмене, ошибке, shutdown или 60 секундах простоя; после освобождения индекса с live-изменениями нужен recapture. Продолжение связано с источником, revision, параметрами запроса и fingerprint UI-kit и подписано секретом текущего процесса. Browser request ограничен 30 секундами, MCP call — 150 секундами. Legacy `captureFile`, диагностический API и явный fallback сохраняют Node-путь; managed API также умеет вызывать новый Rust-обход. Для сборки нужен Rust 1.99.1; Cargo и Node не нужны для прямого запуска готового сервера:
+
+```sh
+./rust/helper/target/release/figma-rust-helper --server /absolute/path/config.json /absolute/path/installation
+```
+
+Последний аргумент задаёт установку, внутри которой расположен управляемый `.cache/figma-network`; config задаёт секрет, порт и папку экспорта. Сервер слушает только `127.0.0.1`. Новые Cargo/NPM-зависимости этот перенос не добавляет.
 
 Замер полного декодирования против компактной модели на одном локальном дампе:
 

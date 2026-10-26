@@ -1,0 +1,263 @@
+{
+  "date": "2026-10-26",
+  "platform": "darwin",
+  "arch": "arm64",
+  "method": "Three alternating runs of actual MCP servers, captured initial input via simulated extension, all pages with UI-kit. Cold starts after capture and before index construction. RSS sampled every 50 ms for server only; excludes real browser/extension, client and capture ingestion peaks. CPU not measured; no cross-platform or total RAM acceptance.",
+  "binarySha256": "f5e3181d5ac6d134ed5674ebf13534e31d0583cca17c35654456face42f374bb",
+  "summary": [
+    {
+      "scenario": "component",
+      "backend": "node",
+      "coldAllMs": 1437.3191659999993,
+      "warmAllMs": 22.55395800000042,
+      "pages": 2,
+      "nodes": 5,
+      "maxSampledServerRssBytes": 288620544
+    },
+    {
+      "scenario": "component",
+      "backend": "rust",
+      "coldAllMs": 960.967125000001,
+      "warmAllMs": 5.323875000000044,
+      "pages": 2,
+      "nodes": 5,
+      "maxSampledServerRssBytes": 51838976
+    },
+    {
+      "scenario": "section",
+      "backend": "node",
+      "coldAllMs": 1680.402958999999,
+      "warmAllMs": 212.05283300000156,
+      "pages": 13,
+      "nodes": 39,
+      "maxSampledServerRssBytes": 301678592
+    },
+    {
+      "scenario": "section",
+      "backend": "rust",
+      "coldAllMs": 1218.5947500000002,
+      "warmAllMs": 42.34479100000135,
+      "pages": 13,
+      "nodes": 39,
+      "maxSampledServerRssBytes": 57409536
+    }
+  ],
+  "results": [
+    {
+      "run": 0,
+      "backend": "node",
+      "scenario": "component",
+      "cold": {
+        "firstMs": 1435.4480409999999,
+        "totalMs": 1447.5804580000001,
+        "pages": 2,
+        "nodes": 5
+      },
+      "warm": {
+        "firstMs": 12.456707999999708,
+        "totalMs": 22.385792000000038,
+        "pages": 2,
+        "nodes": 5
+      },
+      "sampledServerRssBytes": 268779520
+    },
+    {
+      "run": 0,
+      "backend": "node",
+      "scenario": "section",
+      "cold": {
+        "firstMs": 1468.4580830000004,
+        "totalMs": 1687.7772080000004,
+        "pages": 13,
+        "nodes": 39
+      },
+      "warm": {
+        "firstMs": 16.847499999999854,
+        "totalMs": 220.36441699999978,
+        "pages": 13,
+        "nodes": 39
+      },
+      "sampledServerRssBytes": 282378240
+    },
+    {
+      "run": 0,
+      "backend": "rust",
+      "scenario": "component",
+      "cold": {
+        "firstMs": 955.2846250000002,
+        "totalMs": 959.698042,
+        "pages": 2,
+        "nodes": 5
+      },
+      "warm": {
+        "firstMs": 3.2197079999996276,
+        "totalMs": 5.323875000000044,
+        "pages": 2,
+        "nodes": 5
+      },
+      "sampledServerRssBytes": 50839552
+    },
+    {
+      "run": 0,
+      "backend": "rust",
+      "scenario": "section",
+      "cold": {
+        "firstMs": 987.8203750000002,
+        "totalMs": 1218.5947500000002,
+        "pages": 13,
+        "nodes": 39
+      },
+      "warm": {
+        "firstMs": 3.426917000000685,
+        "totalMs": 41.78312499999993,
+        "pages": 13,
+        "nodes": 39
+      },
+      "sampledServerRssBytes": 57409536
+    },
+    {
+      "run": 1,
+      "backend": "rust",
+      "scenario": "component",
+      "cold": {
+        "firstMs": 956.7692499999994,
+        "totalMs": 960.967125000001,
+        "pages": 2,
+        "nodes": 5
+      },
+      "warm": {
+        "firstMs": 3.3335000000006403,
+        "totalMs": 5.808291000001191,
+        "pages": 2,
+        "nodes": 5
+      },
+      "sampledServerRssBytes": 51642368
+    },
+    {
+      "run": 1,
+      "backend": "rust",
+      "scenario": "section",
+      "cold": {
+        "firstMs": 986.4132500000014,
+        "totalMs": 1218.3720000000012,
+        "pages": 13,
+        "nodes": 39
+      },
+      "warm": {
+        "firstMs": 3.523041000000376,
+        "totalMs": 42.34479100000135,
+        "pages": 13,
+        "nodes": 39
+      },
+      "sampledServerRssBytes": 54214656
+    },
+    {
+      "run": 1,
+      "backend": "node",
+      "scenario": "component",
+      "cold": {
+        "firstMs": 1424.7164159999993,
+        "totalMs": 1437.3191659999993,
+        "pages": 2,
+        "nodes": 5
+      },
+      "warm": {
+        "firstMs": 12.462250000000495,
+        "totalMs": 22.55395800000042,
+        "pages": 2,
+        "nodes": 5
+      },
+      "sampledServerRssBytes": 288620544
+    },
+    {
+      "run": 1,
+      "backend": "node",
+      "scenario": "section",
+      "cold": {
+        "firstMs": 1437.3976249999996,
+        "totalMs": 1639.606167,
+        "pages": 13,
+        "nodes": 39
+      },
+      "warm": {
+        "firstMs": 16.665624999999636,
+        "totalMs": 206.41408299999966,
+        "pages": 13,
+        "nodes": 39
+      },
+      "sampledServerRssBytes": 301678592
+    },
+    {
+      "run": 2,
+      "backend": "node",
+      "scenario": "component",
+      "cold": {
+        "firstMs": 1408.227084000002,
+        "totalMs": 1420.663292000001,
+        "pages": 2,
+        "nodes": 5
+      },
+      "warm": {
+        "firstMs": 12.506083000000217,
+        "totalMs": 23.20783300000039,
+        "pages": 2,
+        "nodes": 5
+      },
+      "sampledServerRssBytes": 263700480
+    },
+    {
+      "run": 2,
+      "backend": "node",
+      "scenario": "section",
+      "cold": {
+        "firstMs": 1473.3270840000005,
+        "totalMs": 1680.402958999999,
+        "pages": 13,
+        "nodes": 39
+      },
+      "warm": {
+        "firstMs": 16.89716600000247,
+        "totalMs": 212.05283300000156,
+        "pages": 13,
+        "nodes": 39
+      },
+      "sampledServerRssBytes": 278642688
+    },
+    {
+      "run": 2,
+      "backend": "rust",
+      "scenario": "component",
+      "cold": {
+        "firstMs": 965.6369160000031,
+        "totalMs": 970.1446660000001,
+        "pages": 2,
+        "nodes": 5
+      },
+      "warm": {
+        "firstMs": 3.1178749999999127,
+        "totalMs": 5.2349169999979495,
+        "pages": 2,
+        "nodes": 5
+      },
+      "sampledServerRssBytes": 51838976
+    },
+    {
+      "run": 2,
+      "backend": "rust",
+      "scenario": "section",
+      "cold": {
+        "firstMs": 992.4226669999989,
+        "totalMs": 1230.5864169999986,
+        "pages": 13,
+        "nodes": 39
+      },
+      "warm": {
+        "firstMs": 3.65479200000118,
+        "totalMs": 42.99329200000284,
+        "pages": 13,
+        "nodes": 39
+      },
+      "sampledServerRssBytes": 53444608
+    }
+  ]
+}

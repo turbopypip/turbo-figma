@@ -23,16 +23,10 @@ fn require(ok: bool, message: &'static str) -> Result<()> {
         Err(message.into())
     }
 }
+#[cfg(unix)]
 fn same_file(a: &fs::Metadata, b: &fs::Metadata) -> bool {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::MetadataExt;
-        a.dev() == b.dev() && a.ino() == b.ino() && a.nlink() == 1 && b.nlink() == 1
-    }
-    #[cfg(not(unix))]
-    {
-        a.len() == b.len() && a.modified().ok() == b.modified().ok()
-    }
+    use std::os::unix::fs::MetadataExt;
+    a.dev() == b.dev() && a.ino() == b.ino() && a.nlink() == 1 && b.nlink() == 1
 }
 pub fn bounded(path: &Path, limit: usize) -> Result<Vec<u8>> {
     let before = fs::symlink_metadata(path)?;
@@ -40,6 +34,10 @@ pub fn bounded(path: &Path, limit: usize) -> Result<Vec<u8>> {
         before.is_file() && !before.file_type().is_symlink(),
         "Unsafe cache file",
     )?;
+    #[cfg(windows)]
+    let before_handle = crate::platform::open_read(path, false)?;
+    #[cfg(windows)]
+    let before_info = crate::platform::file_info(&before_handle)?;
     let mut options = OpenOptions::new();
     options.read(true);
     #[cfg(target_os = "macos")]
@@ -52,10 +50,21 @@ pub fn bounded(path: &Path, limit: usize) -> Result<Vec<u8>> {
         use std::os::unix::fs::OpenOptionsExt;
         options.custom_flags(0x20000);
     }
+    #[cfg(windows)]
+    let file = crate::platform::open_read(path, false)?;
+    #[cfg(unix)]
     let file = options.open(path)?;
+    #[cfg(unix)]
+    let same = same_file(&before, &file.metadata()?);
+    #[cfg(windows)]
+    let same = {
+        let info = crate::platform::file_info(&file)?;
+        info.volume == before_info.volume && info.index == before_info.index
+            && info.links == 1 && before_info.links == 1
+    };
     let stat = file.metadata()?;
     require(
-        stat.is_file() && same_file(&before, &stat) && stat.len() <= limit as u64,
+        stat.is_file() && same && stat.len() <= limit as u64,
         "Invalid cache file or size",
     )?;
     let mut bytes = Vec::with_capacity(stat.len() as usize + 1);
@@ -69,7 +78,7 @@ pub fn bounded(path: &Path, limit: usize) -> Result<Vec<u8>> {
 fn directory(path: &Path) -> Result<()> {
     let stat = fs::symlink_metadata(path)?;
     require(
-        stat.is_dir() && !stat.file_type().is_symlink() && fs::canonicalize(path)? == path,
+        stat.is_dir() && !stat.file_type().is_symlink() && crate::platform::canonicalize(path)? == path,
         "Unsafe cache directory",
     )
 }

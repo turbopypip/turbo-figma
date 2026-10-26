@@ -1,56 +1,20 @@
-import { nativeAvailable } from './native-command.js';
-import { NativeToolRegistry, serveNativeMcp } from './native-mcp.js';
-import { readFile } from 'node:fs/promises';
+import { spawn } from 'node:child_process';
+import { access } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-import { z } from 'zod';
-import { serveStdio } from '@modelcontextprotocol/server/stdio';
-import { Bridge } from './bridge.js';
-import { AssetStore } from './assets.js';
-import path from 'node:path';
-import { NetworkStore } from './network-store.js';
-import { stopNetworkSelection } from './network-reader.js';
-import { createServer } from './server.js';
-
-const configSchema = z.object({ secret: z.string().min(32).max(256),
-  assetDirectory: z.string().min(1), port: z.number().int().min(1024).max(65535).default(3055),
-  variablesFile: z.string().min(1).optional(), adapter: z.literal('browser').default('browser') });
-async function main() {
-  const configPath = process.env.FIGMA_KILO_CONFIG || fileURLToPath(new URL('../.local/config.json', import.meta.url));
-  const config = configSchema.parse(JSON.parse(await readFile(configPath, 'utf8')));
-  const assets = await AssetStore.create(config.assetDirectory);
-  // Resolve against this installation, never against Kilo's working directory.
-  const cache = await NetworkStore.create(fileURLToPath(new URL('../', import.meta.url)));
-  if (assets.root === cache.root || assets.root.startsWith(cache.root + path.sep)) throw new Error('Asset directory must be outside the managed cache');
-  const bridge = new Bridge(config.secret, config.port, 30_000, async action => {
-    if (action === 'cache-clear') return cache.clean('all');
-    return cache.info();
-  }, cache);
-  try { await bridge.ready; }
-  catch { throw new Error(`Cannot listen on 127.0.0.1:${config.port}. Close the other MCP session or change the port in the server and extension.`); }
-  try { await cache.clean('prune'); }
-  catch (error) { await bridge.close(); throw error; }
-  const registry = await nativeAvailable() ? new NativeToolRegistry() : undefined;
-  const server = createServer(bridge, assets, config.variablesFile, cache, undefined, false, registry?.factory);
-  const nativeHandle = registry ? await serveNativeMcp(registry) : undefined;
-  if (nativeHandle) console.error('MCP stdio backend: rust');
-  const handle = nativeHandle ?? serveStdio(() => server, { onerror: () => console.error('MCP transport error') });
-  let closing = false;
-  const close = async () => {
-    if (closing) return;
-    closing = true;
-    try { await bridge.close(); }
-    finally { try { await stopNetworkSelection(); } finally { await handle.close(); } }
-  };
-  if (nativeHandle) void nativeHandle.done.then(close);
-  else { process.stdin.once('end', () => void close()); process.stdin.once('close', () => void close()); }
-  process.once('SIGINT', () => void close());
-  process.once('SIGTERM', () => void close());
-  console.error(`Figma bridge listening on ws://127.0.0.1:${config.port}. Pair the ${config.adapter} adapter. Assets: ${assets.root}`);
+const root = fileURLToPath(new URL('../', import.meta.url));
+const binary = process.env.FIGMA_RUST_BINARY ?? fileURLToPath(new URL(`../rust/helper/target/release/figma-rust-helper${process.platform === 'win32' ? '.exe' : ''}`, import.meta.url));
+const mode = process.env.FIGMA_NETWORK_BACKEND ?? (['darwin', 'win32'].includes(process.platform) ? 'rust' : 'node');
+if (!['rust','node'].includes(mode)) throw new Error('FIGMA_NETWORK_BACKEND must be rust or node');
+const available = mode === 'rust' && await access(binary).then(()=>true,()=>false);
+if (available) {
+  const config = process.env.FIGMA_KILO_CONFIG ?? fileURLToPath(new URL('../.local/config.json', import.meta.url));
+  const child = spawn(binary, ['--server', config, root], {stdio:'inherit',windowsHide:true});
+  const kill = () => child.kill('SIGKILL');
+  process.once('exit', kill);
+  process.once('SIGINT', () => child.kill('SIGINT'));
+  process.once('SIGTERM', () => child.kill('SIGTERM'));
+  child.once('error', error => { console.error(error.message); process.exitCode=1; });
+  child.once('close', (code, signal) => { process.off('exit',kill); process.exitCode=code ?? (signal ? 1 : 0); });
+} else {
+  await import('./fallback-entry.js');
 }
-main().catch(error => {
-  console.error(error instanceof Error && 'code' in error && error.code === 'ENOENT'
-    ? 'Configuration not found. Run npm run setup -- --assets <absolute-directory> first.'
-    : error instanceof z.ZodError ? 'Invalid configuration; run setup again.'
-    : error instanceof Error ? error.message : 'Startup failed');
-  process.exitCode = 1;
-});

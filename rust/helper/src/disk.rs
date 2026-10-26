@@ -101,7 +101,7 @@ fn value_heap(v: &Value) -> usize {
     }
 }
 pub struct Disk {
-    files: [File; 4],
+    files: Vec<File>,
     pub io: Io,
     bytes: usize,
     edge_bytes: usize,
@@ -121,6 +121,7 @@ pub struct Disk {
     mutated: bool,
 }
 impl Disk {
+    pub fn close_files(&mut self) { self.files.clear(); }
     pub fn new(dir: &Path, fields: HashSet<String>) -> Result<Self> {
         let open = |name: &str| -> Result<File> {
             let mut o = OpenOptions::new();
@@ -132,7 +133,7 @@ impl Disk {
             }
             Ok(o.open(dir.join(name))?)
         };
-        let files = [
+        let files = vec![
             open("nodes.bin")?,
             open("index.bin")?,
             open("edges.bin")?,
@@ -473,6 +474,23 @@ impl Disk {
     }
     // Internal trusted host commands. Live semantic validation remains in the
     // existing projection adapter; Rust owns all index reads, writes and caching.
+    /// Immutable public pages share the existing bounded projection cache.
+    /// Selection and every accepted mutation clear both raw and projected entries.
+    pub fn context_query(&mut self, q: &Value) -> Result<Value> {
+        self.runtime_command(&json!({"op":"select","id":q["id"]}))?;
+        let mut hash = Sha256::new();
+        hash.update(b"public-context-v1");
+        hash.update(serde_json::to_vec(q)?);
+        let digest: [u8;32] = hash.finalize().into();
+        if let Some(cached) = self.projected.get(&digest) { return Ok(serde_json::from_str(cached)?); }
+        let result = crate::traversal::query(self,q)?;
+        let text = String::from_utf8(crate::json::bytes(&result)?)?;
+        let charge = text.capacity()+256;
+        if self.projected.len()<128 && self.projected_bytes+charge<=4*1024*1024 {
+            self.projected.insert(digest,text); self.projected_bytes+=charge;
+        }
+        Ok(result)
+    }
     pub fn runtime_command(&mut self, q: &Value) -> Result<Value> {
         let key = || q["id"].as_str().ok_or("Invalid node GUID");
         match q["op"].as_str() {
@@ -525,6 +543,8 @@ impl Disk {
             Some("children") => Ok(json!(self.children(key()?)?)),
             Some("asset") => self.asset(q["type"].as_str().ok_or("Invalid asset type")?, &q["ref"]),
             Some("query") => self.query(q),
+            Some("contextQuery") => self.context_query(q),
+            Some("uikit") => crate::uikit::command(&q["command"]),
             Some("storeVerify") => crate::store::retained_verify(&q["command"]),
             Some("project") => {
                 let requests = q["entries"]

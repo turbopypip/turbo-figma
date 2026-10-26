@@ -13,7 +13,7 @@ use std::{
     path::Path,
     time::Instant,
 };
-fn value(w: Wire) -> Value {
+pub fn value(w: Wire) -> Value {
     match w {
         Wire::Null => Value::Null,
         Wire::Bool(v) => v.into(),
@@ -194,6 +194,7 @@ pub fn run(mode: &str, config: Option<&str>) -> Result<()> {
         let t = Instant::now();
         let result = match q["op"].as_str() {
             Some("query") => disk.query(q),
+            Some("contextQuery") => crate::traversal::query(&mut disk,q),
             Some("lookup") => {
                 let key = q["id"].as_str().ok_or("Invalid node GUID")?;
                 disk.node(key, false)

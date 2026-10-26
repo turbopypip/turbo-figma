@@ -2,6 +2,42 @@
 
 Дата: 26 октября 2026. Платформа локальной проверки: macOS arm64, Node 20.12.2, Rust 1.99.1.
 
+## Дополнение: Windows и мультиплатформенный запуск
+
+26 октября 2026: добавлен Windows MSVC вариант общего standalone runtime. `platform.rs` изолирует Windows RNG (BCrypt), UTC, console control, идентичность файлов/каталогов и нормализацию путей. Unix-реализации сохранены. Для Windows `fsync` каталогов не выполняется; содержимое файлов и manifest сбрасывается перед публикацией. Индекс закрывает файловые handles до удаления scratch. Node использует bigint stamps, чтобы не округлять Windows file IDs. Launcher/setup выбирают `.exe` и native backend на Windows; явный Node fallback сохранён, старый Unix socket MCP bridge на Windows не используется.
+
+Добавлен `install.ps1`: Node, MSVC C++/SDK, Rust 1.99.1, npm dependencies, обе сборки и setup. Windows CI дополнен коротким MCP smoke со сборкой TypeScript. По запросу пользователя полный набор и Windows-приёмка не выполнялись. На macOS прошли release build, `npm run check`, `npm run build` и MCP smoke 2/2. Windows MSVC target прошёл `cargo check` (без линковки Windows executable; для проверки Rust использован host zstd через pkg-config). Это не результат запуска `.exe` или PowerShell-установщика на Windows. Метрики CPU/RSS и полная приёмка остаются отдельной работой.
+
+## Текущий результат: автономный сервер Rust
+
+Серверный runtime на macOS перенесён в Rust, включая ранее остававшиеся Node-части. `figma-rust-helper --server CONFIG INSTALLATION` обслуживает MCP и расширение **без Node-процесса и без Node tool host**. Проверяется отдельным прямым stdio-тестом. Старый список неперенесённых частей ниже — история предыдущих итераций.
+
+- `traversal.rs`, `instances.rs`, `geometry.rs`: полный поддержанный обход, ancestor geometry, instances, overrides, вложенные масштабы и component properties, порядок, скрытые ветки, dependency budgets и страницы.
+- `variable_resolver.rs`, `bindings.rs`, `uikit.rs`: captured modes/defaults/aliases, применение значений до layout/styles, диагностика unresolved и UI-kit. CSS/SCSS читаются ограниченно; Sass не исполняется. Для развернутых значений UI-kit добавлен отдельный предел 2 МиБ. Сокращение длинных имён учитывает UTF-16 и не разрезает Unicode-символ.
+- `inspector.rs`, `engine.rs`: доказательства initial load, sequence/ACK, публикация manifest, capture ownership, presence/selection, supported live changes, revision/freshness, reader/writer exclusion, integrity recheck на cache hit, HMAC continuation, отмена и освобождение scratch. Один ограниченный actor владеет файловыми операциями и индексом; очистка не пересекается с чтением. Heartbeat проверенной сессии обновляет lease независимо от тяжёлой работы. Idle timer освобождает индекс через 60 секунд без новых tool calls; release обновлённого индекса требует recapture.
+- `standalone.rs`: нативные обработчики пяти публичных MCP-инструментов, pairing, WebSocket, timeout/cancellation, PNG/SVG и shutdown по EOF/SIGTERM. Неизвестные live-поля/частичные ошибки инвалидируют наблюдение; незавершённый capture не публикуется. Лимит WebSocket — 6 МиБ, соединений/tool calls — восемь; браузерных операций одновременно одна. Тяжёлые чтения и capture имеют исключение, а не неограниченную очередь.
+- Кэш готовых страниц использует **тот же** лимит проекций 128 записей / 4 МиБ и сбрасывается при select/invalidate/upsert/remove/live. Кэш исходных узлов остаётся ограниченным 4 МиБ. Полная проверка SHA-256 частей перед повторным чтением сохранена.
+- `src/index.ts` — совместимый launcher, выбирающий Rust либо fallback; прежний entrypoint сохранён в `fallback-entry.ts`. Setup при наличии сборки генерирует прямую команду Rust. Браузерное расширение остаётся JavaScript, поскольку использует browser/DOM API. Node-реализация сохранена для отката и диагностических сравнений, но не вызывается автономным Rust-сервером.
+
+Новых Cargo/NPM-зависимостей нет. Ошибка уже запущенного native-сервера не вызывает повтор операции в Node. При отсутствии бинарника launcher выбирает fallback; явно выбрать его можно через `FIGMA_NETWORK_BACKEND=node`. При прямой команде бинарника откат требует заменить команду на Node launcher.
+
+### Проверки и измерение
+
+Финальная release-сборка и TypeScript/extension check прошли. Полный native-набор после добавления кэша страниц — **365/365**; затем добавленный тест 130 service packets отдельно прошёл **1/1** (остальные восемь тестов файла исключены name filter). Полный fallback-набор с этим новым тестом — **366/366**, без пропусков; он также запускает прямые Rust integration-тесты. Cargo — **4/4**. `git diff --check` прошёл. После проверок не осталось тестовых native-серверов; hash измеренного бинарника совпадает с финальной сборкой. Новые тесты покрывают реальные страницы, вложенные instances/scale/properties, mode aliases/cycles/conflicts, UI-kit, invalidation кэша, прямой MCP без Node, service traffic, live revisions, stale tokens, порчу retained parts, incomplete capture, auth, WebSocket 1009, отмену browser operation, SIGTERM и настоящий 60-секундный idle.
+
+Диагностическое сравнение **реальных MCP-серверов**, три чередующихся прогона каждого backend, все страницы с UI-kit; вход — реальная локальная запись, browser transport — тестовый. Cold начинается после capture, до построения индекса. [Сырые данные и hash бинарника](rust-standalone-results.json), [скрипт](../scripts/rust-helper/standalone-measure.mjs).
+
+| Выборка | Node cold, мс | Rust cold, мс | Node warm, мс | Rust warm, мс |
+| --- | ---: | ---: | ---: | ---: |
+| Компонент, 5 узлов / 2 страницы | 1437.3 | 961.0 | 22.6 | 5.3 |
+| Секция, 39 узлов / 13 страниц | 1680.4 | 1218.6 | 212.1 | 42.3 |
+
+Warm-секция в этой серии быстрее на **80.0%**. Sampled RSS сервера за сценарий секции: Node до 301678592 байт (287.7 МиБ), Rust до 57409536 байт (54.8 МиБ). Замер каждые 50 мс может пропускать пики; не включает ingestion capture, реальное расширение, клиента и браузер. Это **не** приёмка общего бюджета 500000000 байт и не CPU-измерение.
+
+Первая серия до кэша страниц показала warm-регрессию 21.9% (255.5 против 209.7 мс); она сохранена в [отдельном отчёте](rust-standalone-before-page-cache.json). Финальная серия выполнена после устранения повторных проекций, без параллельных тестов/сборок. Ускорение включает архитектурное кэширование, а не приписывается только языку.
+
+Перенос серверной логики на текущей macOS завершён; отдельными задачами приёмки остаются живой Chrome/Kilo, общий RAM-бюджет с расширением, полные серии R05–R10 и Windows. Windows entrypoint добавлен (см. дополнение выше); его ручная приёмка ещё не выполнена. Эти ограничения не скрыты за успешными локальными тестами.
+
 ## Дополнение: layout, стили и публичные узлы
 
 **Полный перенос MCP ещё не завершён.** В этой итерации в рабочий Rust-путь перенесены расчёт layout, визуальные стили/типографика и публичное представление узла. Node по-прежнему выполняет обход и ancestor geometry, раскрытие instances/overrides/scale, разрешение native variables, UI-kit, pagination/continuation, lifecycle/read leases, pairing/capture coordination и обработчики инструментов. Точка входа остаётся Node; наличие native layout не означает полностью нативный сервер.

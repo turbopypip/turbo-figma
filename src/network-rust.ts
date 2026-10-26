@@ -9,7 +9,7 @@ import type { SnapshotIdentity } from './network-session.js';
 export const RUST_PACKET_BYTES = 4 * 1024 * 1024;
 export const rustBinary = fileURLToPath(new URL(`../rust/helper/target/release/figma-rust-helper${process.platform === 'win32' ? '.exe' : ''}`, import.meta.url));
 export function rustMode() {
-  const mode = process.env.FIGMA_NETWORK_BACKEND ?? (process.platform === 'darwin' ? 'rust' : 'node');
+  const mode = process.env.FIGMA_NETWORK_BACKEND ?? (['darwin', 'win32'].includes(process.platform) ? 'rust' : 'node');
   if (!['rust', 'node'].includes(mode)) throw new Error('FIGMA_NETWORK_BACKEND must be rust or node');
   return mode;
 }

@@ -252,9 +252,8 @@ export class DiskNetworkSnapshot {
     if (fileKey !== this.fileKey) throw new Error('Selection file does not match capture');
     if (!Number.isInteger(params.depth) || params.depth < 0 || params.depth > 50 || !Number.isInteger(params.maxNodes) || params.maxNodes < 1 || params.maxNodes > 500 || !Number.isSafeInteger(params.offset) || params.offset < 0) throw new Error('Invalid traversal limits');
     if (this.selectionId !== nodeId) { this.selected.clear(); this.selectedBytes = 0; this.selectionId = nodeId; this.native?.call({op:"select",id:nodeId}); }
-    this.native?.beginQuery();
-    try { return this.project(params, fileKey, nodeId); }
-    finally { this.native?.endQuery(); }
+    if (this.native) return this.native.call({op:"contextQuery",id:nodeId,fileKey,depth:params.depth,maxNodes:params.maxNodes,offset:params.offset,includeHidden:params.includeHidden,format:params.format,maxBytes:params.maxBytes,schema:this.layoutSchemaHash,applied:this.applied});
+    return this.project(params, fileKey, nodeId);
   }
   private project(params: NetworkQuery, fileKey: string, nodeId: string) {
     const nodeBudget = responseBudget(params) - 3072;

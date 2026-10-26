@@ -4,7 +4,7 @@ import { rustBinary, rustMode } from './network-rust.js';
 
 /** Select once, before any mutation. A native failure never replays a write in Node. */
 export async function nativeAvailable() {
-  if (rustMode() !== 'rust' || process.platform === 'win32') return false;
+  if (rustMode() !== 'rust') return false;
   try { await access(process.env.FIGMA_RUST_BINARY ?? rustBinary); return true; }
   catch { return false; }
 }

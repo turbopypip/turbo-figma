@@ -36,7 +36,7 @@ function frameIdentity(value?: FrameIdentity): FrameIdentity | undefined { retur
 function partName(sequence: number) { return `part-${sequence}.bin`; }
 
 async function directoryStamp(directory: string) {
-  const stat = await lstat(directory);
+  const stat = await lstat(directory, { bigint: true });
   if (!stat.isDirectory() || stat.isSymbolicLink() || await realpath(directory) !== directory) throw new Error('Unsafe cache directory');
   return `${stat.dev}:${stat.ino}`;
 }
