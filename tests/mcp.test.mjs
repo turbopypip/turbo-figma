@@ -1,3 +1,5 @@
+import { existsSync } from 'node:fs';
+import { rustBinary } from '../dist/network-rust.js';
 import {parseSchema,compileSchema,encodeBinarySchema} from 'kiwi-schema';
 import { createCaptureSender } from '../extension/network-transfer.js';
 import {zstd} from './wire-fixture.mjs';
@@ -31,11 +33,12 @@ test('real stdio MCP session: discovery, context, image, disk export, EOF cleanu
   await capture.append(0, Buffer.from('cached frame'));
   await capture.commit({ schemaReceived: true, joinStarted: true, joinEnded: true, receivedParts: 1, droppedParts: 0, sequenceComplete: true });
   const transport = new StdioClientTransport({ command: process.execPath, args: [path.join(installation, 'dist', 'index.js')], cwd: dir,
-    env: { ...process.env, FIGMA_KILO_CONFIG: configPath }, stderr: 'pipe' });
+    env: { ...process.env, ...(existsSync(rustBinary) ? { FIGMA_RUST_BINARY: process.env.FIGMA_RUST_BINARY ?? rustBinary } : {}), FIGMA_KILO_CONFIG: configPath }, stderr: 'pipe' });
   let diagnostics = ''; transport.stderr.on('data', chunk => { diagnostics += chunk; });
   const client = new Client({ name: 'integration-test', version: '1.0.0' });
   t.after(() => client.close()); await client.connect(transport);
   const { tools } = await client.listTools();
+  if (existsSync(process.env.FIGMA_RUST_BINARY ?? rustBinary) && process.platform !== 'win32' && (process.env.FIGMA_NETWORK_BACKEND ?? (process.platform === 'darwin' ? 'rust' : 'node')) === 'rust') assert.match(diagnostics, /MCP stdio backend: rust/);
   for(const name of ['get_design_context']) assert.equal(tools.find(t=>t.name===name).inputSchema.properties.maxBytes.default,24000);
   assert.deepEqual(tools.map(t => t.name).sort(), ['export_assets', 'get_connection_status', 'get_design_context', 'get_screenshot', 'get_selection']);
   const status = async () => JSON.parse((await client.callTool({name: 'get_connection_status', arguments: {}})).content[0].text);

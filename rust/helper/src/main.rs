@@ -1,9 +1,19 @@
+mod assets;
+mod angle;
+mod context;
+mod layout;
+mod style;
 mod disk;
 mod frame;
 mod json;
+mod live;
+#[cfg(unix)]
+mod mcp;
 mod stage6;
 mod stage7;
 mod stage8;
+mod store;
+mod websocket;
 mod wire;
 use std::io::{self, BufRead, Read, Write};
 use std::time::Duration;
@@ -13,6 +23,43 @@ const LIMIT: usize = 65536;
 // One bounded request per process. stdout is exclusively protocol data.
 fn main() -> io::Result<()> {
     let args: Vec<String> = std::env::args().collect();
+    #[cfg(unix)]
+    if args.get(1).is_some_and(|s| s == "--mcp") {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()?;
+        let result = runtime.block_on(mcp::run(args.get(2).map(String::as_str).unwrap_or("")));
+        runtime.shutdown_background();
+        if let Err(e) = result {
+            eprintln!("{e}");
+            std::process::exit(1);
+        }
+        return Ok(());
+    }
+    if args.get(1).is_some_and(|s| s == "--websocket") {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()?;
+        if let Err(e) = runtime.block_on(websocket::run()) {
+            eprintln!("{e}");
+            std::process::exit(1);
+        }
+        return Ok(());
+    }
+    if args.get(1).is_some_and(|s| s == "--assets") {
+        if let Err(e) = assets::run() {
+            eprintln!("{e}");
+            std::process::exit(1);
+        }
+        return Ok(());
+    }
+    if args.get(1).is_some_and(|s| s == "--store") {
+        if let Err(e) = store::run() {
+            eprintln!("{e}");
+            std::process::exit(1);
+        }
+        return Ok(());
+    }
     if args.get(1).is_some_and(|s| s == "--stage8") {
         if let Err(error) = stage8::run(
             args.get(2).map(String::as_str).unwrap_or(""),

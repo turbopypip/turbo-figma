@@ -123,6 +123,11 @@ export class DiskNetworkSnapshot {
       write(this.table, p.buffer, p.offset);
     }
   }
+  applyNativeLive(payload: string) {
+    if (!this.native || this.poisoned) throw new Error('Live index is unavailable');
+    try { const result = this.native.call({op:'live',payload}); this.count = result.count; this.applied = result.applied; }
+    catch (error) { this.poisoned = true; throw error; }
+  }
   /** Mutations are private until worker acknowledgement. A failure poisons this disposable index. */
   applyLive(changes: Record<string, any>[]) {
     if (this.poisoned || !this.ended || !this.selectionId) throw new Error('Live index is unavailable');
@@ -285,11 +290,36 @@ export class DiskNetworkSnapshot {
     const stack: {modes:ModeContext;geometry?:GeometryContext;id:string; sourceId:string; depth:number; parent?:Record<string,any>; parentId?:string; context?:InstanceContext}[] = [{ id: nodeId, sourceId:nodeId, depth: 0, geometry:rootGeometry,modes:rootModes }];
     const seen = new Set<string>(), pending: string[] = [], skipped: string[] = [], nodes: any[] = [];
     let eligible = 0, bytes = 0, pendingCount = 0, skippedCount = 0, outputFull = false;
+    // Batch projection work without retaining a second selection. The native path
+    // computes layout and the public allowlist in Rust; Node still owns traversal.
+    let projection: {request: Record<string, any>; node: Record<string, any>}[] = [], projectionBytes = 0;
+    const append = (entry: Record<string, any>, n: Record<string, any>) => {
+      if (outputFull || nodes.length >= params.maxNodes) return;
+      if (Buffer.byteLength(JSON.stringify(entry)) > Math.min(120000, nodeBudget - 1)) entry = { id: entry.id, parentId: entry.parentId, depth: entry.depth,
+        name: typeof n.name === 'string' ? n.name.slice(0, 100) : undefined, type: typeof n.type === 'string' ? n.type.slice(0, 100) : undefined, propertiesOmitted: 'Node exceeds output limit' };
+      if (Buffer.byteLength(JSON.stringify(entry)) + 1 > nodeBudget) entry = { id: entry.id, parentId: entry.parentId, depth: entry.depth, propertiesOmitted: 'Node exceeds output limit' };
+      const length = Buffer.byteLength(JSON.stringify(entry));
+      if (bytes + length + 1 > nodeBudget) outputFull = true;
+      else { nodes.push(entry); bytes += length + 1; }
+    };
+    const flushProjection = () => {
+      if (!projection.length) return;
+      const entries = this.native!.call({op:'project',entries:projection.map(p=>p.request),schema:this.layoutSchemaHash,format:params.format,maxEntryBytes:Math.min(120000,nodeBudget-1)});
+      for (let i=0;i<entries.length;i++) {
+        const n=projection[i].node;
+        const metadata=projection[i].request.entry;
+        const entry=entries[i]??{id:metadata.id,parentId:metadata.parentId,depth:metadata.depth,
+          name:typeof n.name==='string'?n.name.slice(0,100):undefined,type:typeof n.type==='string'?n.type.slice(0,100):undefined,propertiesOmitted:'Node exceeds output limit'};
+        append(entry,n);
+      }
+      projection=[]; projectionBytes=0;
+    };
     while (stack.length) {
       const item = stack.pop()!;
       if (seen.has(item.id)) throw new Error('Cycle in selected tree');
       seen.add(item.id);
-      let n = instanceNode(item.context ? dependency(item.sourceId)! : this.node(item.sourceId), item.context);
+      const sourceNode = item.context ? dependency(item.sourceId)! : this.node(item.sourceId);
+      let n = instanceNode(sourceNode, item.context);
       if (seen.size > DISK_LIMITS.nodes) throw new Error('Rendered selection node limit exceeded');
       let childSource = item.sourceId, childContext = item.context, skipChildren = false;
       if (n.type === 'INSTANCE') {
@@ -308,14 +338,27 @@ export class DiskNetworkSnapshot {
         const parentId = item.parentId ?? (parentIndex ? safeId(parentIndex.guid) : null);
         const parentSlot = !item.parent && parentId ? this.slot(parentId) : undefined;
         const parent = item.parent ?? (parentSlot?.buffer.readUInt32LE(32) ? this.node(parentId!, false) : undefined);
-        let entry: Record<string, any> = { style: networkStyle(n,undefined,bindings), layout: networkLayout(n, parent, this.layoutSchemaHash, geometry), id: item.id, parentId, ...(item.context ? {sourceNodeId:item.sourceId} : {}), depth: item.depth, ...properties };
-        if (params.format !== 'debug') entry = designContextNode(entry);
-        if (Buffer.byteLength(JSON.stringify(entry)) > Math.min(120000, nodeBudget - 1)) entry = { id: item.id, parentId: entry.parentId, depth: item.depth,
-          name: typeof n.name === 'string' ? n.name.slice(0, 100) : undefined, type: typeof n.type === 'string' ? n.type.slice(0, 100) : undefined, propertiesOmitted: 'Node exceeds output limit' };
-        if (Buffer.byteLength(JSON.stringify(entry)) + 1 > nodeBudget) entry = { id: item.id, parentId: entry.parentId, depth: item.depth, propertiesOmitted: 'Node exceeds output limit' };
-        const length = Buffer.byteLength(JSON.stringify(entry));
-        if (bytes + length + 1 > nodeBudget) outputFull = true;
-        else { nodes.push(entry); bytes += length + 1; }
+        let entry: Record<string, any> = { id: item.id, parentId, ...(item.context ? {sourceNodeId:item.sourceId} : {}), depth: item.depth, ...properties };
+        if (this.native) {
+          entry = {id:item.id,parentId,...(item.context?{sourceNodeId:item.sourceId}:{}),depth:item.depth};
+          // The original wire node already lives in Rust. Send only effective
+          // overrides, rather than copying the whole record back across IPC.
+          const patch:Record<string,unknown>={}, removed:string[]=[];
+          for (const key of new Set([...Object.keys(sourceNode),...Object.keys(n)])) {
+            if (sourceNode[key]===n[key] || JSON.stringify(sourceNode[key])===JSON.stringify(n[key])) continue;
+            if (n[key]===undefined) removed.push(key); else patch[key]=n[key];
+          }
+          const request = {id:item.sourceId,patch,removed,entry,bindings,parent:parent?{stackMode:parent.stackMode}:undefined,geometry};
+          const charge = Buffer.byteLength(JSON.stringify(request));
+          if (projection.length && (projection.length>=8 || projectionBytes+charge>128*1024)) flushProjection();
+          if (!outputFull && nodes.length < params.maxNodes) { projection.push({request,node:{name:n.name,type:n.type}}); projectionBytes+=charge; }
+          if (projection.length>=8 || projectionBytes>=128*1024 || nodes.length+projection.length>=params.maxNodes) flushProjection();
+        } else {
+          entry.style=networkStyle(n,undefined,bindings);
+          entry.layout=networkLayout(n,parent,this.layoutSchemaHash,geometry);
+          if (params.format !== 'debug') entry=designContextNode(entry);
+          append(entry,n);
+        }
       }
       if (skipChildren) continue;
       if (item.depth >= params.depth) {
@@ -327,6 +370,7 @@ export class DiskNetworkSnapshot {
           depth: item.depth + 1, parent:n, parentId:item.id, context:childContext, geometry,modes });
       }
     }
+    flushProjection();
     const next = params.offset + nodes.length;
     return { adapter: 'figma-network-snapshot', live: this.applied > 0, appliedLiveBatches: this.applied, fileKey, rootId: nodeId, documentRecords: this.count,
       initialBatches: this.batches, ignoredLiveBatches: this.live, nodes,

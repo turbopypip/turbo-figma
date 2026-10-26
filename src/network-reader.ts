@@ -66,7 +66,12 @@ async function decode(params: Record<string, unknown>, cache: NetworkStore, sign
     return await cache.withRead(async () => {
       const selection = parseNetworkSelection(params.url as string);
       const snapshot = params.snapshot as SnapshotIdentity | undefined;
-      const manifest = snapshot ? await cache.readManifest(snapshot) : undefined;
+      const verifier = cache.native && retained && !retained.dead ? retained.rust : undefined;
+      const manifest = snapshot ? verifier ? await cache.verifiedManifest(snapshot, async command => {
+        const reply = await verifier.request({op:'storeVerify',command},false,signal,120000);
+        if (reply.error) throw new Error(reply.error);
+        return reply.result;
+      }) : await cache.readManifest(snapshot) : undefined;
       const freshness = manifest ? cache.freshness(manifest) : undefined;
       const revision = manifest ? cache.liveRevision(manifest) : 0;
       if (freshness) signal = signal ? AbortSignal.any([signal, freshness]) : freshness;
@@ -98,11 +103,8 @@ async function decode(params: Record<string, unknown>, cache: NetworkStore, sign
       if (revision && (retained?.dead || key !== retained?.key)) throw new Error('STALE: updated selection index unavailable; recapture');
       if (retained?.dead || !key || key !== retained?.key || selection.fileKey !== snapshot?.fileKey) await dispose();
       // Recheck immutable source bytes on a hit: clearing or corruption cannot revive old data.
-      if (retained && snapshot) {
-        for (let i = 0; i < manifest!.parts.length; i++) {
-          if (signal?.aborted) throw new Error('Request cancelled');
-          await cache.readPart(snapshot, i);
-        }
+      if (retained && snapshot && !verifier) {
+        await cache.verifyParts(snapshot, signal);
       }
       if (signal?.aborted) throw new Error('Request cancelled');
       const reused = !!retained;

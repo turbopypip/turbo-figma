@@ -13,6 +13,12 @@ await mkdir(config.workspace, { recursive: true });
 const cache = await NetworkStore.create(config.workspace);
 const partReads = { calls: 0, bytes: 0, durationMs: 0 };
 if (config.profile) {
+  if (cache.native) {
+    const verifiedManifest = cache.verifiedManifest.bind(cache);
+    cache.verifiedManifest = async (...args) => { const start = performance.now(); try { const manifest = await verifiedManifest(...args); partReads.calls += manifest.parts.length; partReads.bytes += manifest.parts.reduce((n,p)=>n+p.bytes,0); return manifest; } finally { partReads.durationMs += performance.now() - start; } };
+    const verify = cache.verifyParts.bind(cache);
+    cache.verifyParts = async (...args) => { const start = performance.now(); try { const counts = await verify(...args); partReads.calls += counts.calls; partReads.bytes += counts.bytes; return counts; } finally { partReads.durationMs += performance.now() - start; } };
+  }
   const readPart = cache.readPart.bind(cache);
   cache.readPart = async (...args) => { const start = performance.now(); try { const bytes = await readPart(...args); partReads.calls++; partReads.bytes += bytes.length; return bytes; } finally { partReads.durationMs += performance.now() - start; } };
 }

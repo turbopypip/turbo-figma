@@ -114,6 +114,8 @@ pub struct Disk {
     pub live: usize,
     selected: HashMap<String, Rc<NodeRecord>>,
     charge: usize,
+    projected: HashMap<[u8; 32], String>,
+    projected_bytes: usize,
     selection: Option<String>,
     fields: HashSet<String>,
     mutated: bool,
@@ -152,6 +154,8 @@ impl Disk {
             live: 0,
             selected: HashMap::new(),
             charge: 0,
+            projected: HashMap::new(),
+            projected_bytes: 0,
             selection: None,
             fields,
             mutated: false,
@@ -509,6 +513,8 @@ impl Disk {
             Some("invalidate") => {
                 self.selected.clear();
                 self.charge = 0;
+                self.projected.clear();
+                self.projected_bytes = 0;
                 Ok(Value::Null)
             }
             Some("node") => self.node(key()?, q["cache"].as_bool().unwrap_or(true)),
@@ -519,6 +525,46 @@ impl Disk {
             Some("children") => Ok(json!(self.children(key()?)?)),
             Some("asset") => self.asset(q["type"].as_str().ok_or("Invalid asset type")?, &q["ref"]),
             Some("query") => self.query(q),
+            Some("storeVerify") => crate::store::retained_verify(&q["command"]),
+            Some("project") => {
+                let requests = q["entries"]
+                    .as_array()
+                    .ok_or("Invalid projection entries")?;
+                check(requests.len() <= 8, "Projection batch count limit exceeded")?;
+                let digest: [u8; 32] = Sha256::digest(serde_json::to_vec(q)?).into();
+                if let Some(cached) = self.projected.get(&digest) {
+                    return Ok(serde_json::from_str(cached)?);
+                }
+                let mut expanded = q.clone();
+                for item in expanded["entries"].as_array_mut().unwrap() {
+                    if let Some(id) = item["id"].as_str() {
+                        let mut node = self.node(id, false)?;
+                        let patch = item["patch"]
+                            .as_object()
+                            .ok_or("Invalid projection patch")?;
+                        let removed = item["removed"]
+                            .as_array()
+                            .ok_or("Invalid projection removals")?;
+                        for (key, value) in patch {
+                            node[key] = value.clone();
+                        }
+                        for key in removed {
+                            node.as_object_mut()
+                                .ok_or("Invalid projection source")?
+                                .remove(key.as_str().ok_or("Invalid removed field")?);
+                        }
+                        item["node"] = node;
+                    }
+                }
+                let result = crate::context::project(&expanded)?;
+                let text = String::from_utf8(crate::json::bytes(&result)?)?;
+                let charge = text.capacity() + 256;
+                if self.projected.len() < 128 && self.projected_bytes + charge <= 4 * 1024 * 1024 {
+                    self.projected.insert(digest, text);
+                    self.projected_bytes += charge;
+                }
+                Ok(result)
+            }
             Some("remove") => {
                 let (mut s, p) = self.slot(key()?, false)?.ok_or("Missing live node")?;
                 check(u32at(&s, 32) > 0, "Missing live node")?;
@@ -527,6 +573,8 @@ impl Disk {
                 self.count -= 1;
                 self.selected.clear();
                 self.charge = 0;
+                self.projected.clear();
+                self.projected_bytes = 0;
                 self.mutated = true;
                 Ok(Value::Null)
             }
@@ -536,6 +584,95 @@ impl Disk {
             }
             _ => Err("Unknown runtime operation".into()),
         }
+    }
+    pub fn apply_live(&mut self, changes: &[Value]) -> Result<()> {
+        check(
+            self.ended && self.selection.is_some(),
+            "Live index is unavailable",
+        )?;
+        check(
+            !changes.is_empty() && changes.len() <= 256,
+            "Live batch limit exceeded",
+        )?;
+        self.selected.clear();
+        self.charge = 0;
+        self.projected.clear();
+        self.projected_bytes = 0;
+        let mut ids = HashSet::new();
+        let supported = |v: &Value| {
+            matches!(
+                v.as_str(),
+                Some("FRAME" | "GROUP" | "RECTANGLE" | "ELLIPSE" | "LINE" | "TEXT" | "VECTOR")
+            )
+        };
+        for change in changes {
+            crate::live::validate(change)?;
+            let key = id(&change["guid"])?;
+            check(ids.insert(key.clone()), "Repeated GUID in live batch")?;
+            let slot = self.slot(&key, false)?;
+            let old = if slot.as_ref().is_some_and(|(s, _)| u32at(s, 32) > 0) {
+                Some(self.node(&key, false)?)
+            } else {
+                None
+            };
+            let created = change["phase"] == "CREATED";
+            check(
+                if created {
+                    old.is_none() && slot.is_none()
+                } else {
+                    old.is_some()
+                },
+                "Ambiguous live creation/update/removal",
+            )?;
+            if let Some(n) = &old {
+                check(supported(&n["type"]), "Unsupported live target type")?;
+            }
+            if created {
+                check(
+                    supported(&change["type"]) && change.get("parentIndex").is_some(),
+                    "Incomplete live creation",
+                )?;
+            } else if let Some(t) = change.get("type") {
+                check(
+                    Some(t) == old.as_ref().map(|v| &v["type"]),
+                    "Live type change unsupported",
+                )?;
+            }
+            if change["phase"] == "REMOVED" {
+                check(
+                    self.selection.as_deref() != Some(&key) && self.children(&key)?.is_empty(),
+                    "Removing selection root or non-leaf requires recapture",
+                )?;
+                self.runtime_command(&json!({"op":"remove","id":key}))?;
+                continue;
+            }
+            let mut merged = old.unwrap_or_else(|| json!({}));
+            for (k, v) in change.as_object().ok_or("Invalid live change")? {
+                merged[k] = v.clone();
+            }
+            merged["phase"] = json!("CREATED");
+            let mut parent = merged["parentIndex"]["guid"].clone();
+            let mut ancestors = HashSet::from([key]);
+            while !parent.is_null() {
+                let p = id(&parent)?;
+                check(
+                    !ancestors.contains(&p) && ancestors.len() <= 64,
+                    "Live parent cycle/depth limit",
+                )?;
+                ancestors.insert(p.clone());
+                let n = self.node(&p, false)?;
+                check(
+                    matches!(
+                        n["type"].as_str(),
+                        Some("FRAME" | "GROUP" | "CANVAS" | "DOCUMENT")
+                    ),
+                    "Unsupported live parent dependency",
+                )?;
+                parent = n["parentIndex"]["guid"].clone();
+            }
+            self.runtime_upsert(&merged)?;
+        }
+        Ok(())
     }
     fn runtime_upsert(&mut self, n: &Value) -> Result<()> {
         let key = id(&n["guid"])?;
@@ -595,15 +732,19 @@ impl Disk {
         }
         self.selected.clear();
         self.charge = 0;
+        self.projected.clear();
+        self.projected_bytes = 0;
         self.mutated = true;
         Ok(())
     }
     pub fn stats(&self) -> Value {
-        json!({"cache":{"nodes":self.selected.len(),"bytes":self.charge},"documentRecords":self.count,"initialBatches":self.batches,"ignoredLiveBatches":self.live,"scratchBytes":SLOTS*SLOT as u64+32768*56+self.bytes as u64+self.edge_bytes as u64,"nodeBytes":self.bytes,"io":{"reads":self.io.reads,"readBytes":self.io.read_bytes,"writes":self.io.writes,"writeBytes":self.io.write_bytes}})
+        json!({"projectionCache":{"entries":self.projected.len(),"bytes":self.projected_bytes},"cache":{"nodes":self.selected.len(),"bytes":self.charge},"documentRecords":self.count,"initialBatches":self.batches,"ignoredLiveBatches":self.live,"scratchBytes":SLOTS*SLOT as u64+32768*56+self.bytes as u64+self.edge_bytes as u64,"nodeBytes":self.bytes,"io":{"reads":self.io.reads,"readBytes":self.io.read_bytes,"writes":self.io.writes,"writeBytes":self.io.write_bytes}})
     }
     pub fn clear(&mut self) {
         self.selected = HashMap::new();
         self.charge = 0;
+        self.projected.clear();
+        self.projected_bytes = 0;
         self.selection = None;
     }
     pub fn query(&mut self, q: &Value) -> Result<Value> {

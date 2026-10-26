@@ -1,3 +1,5 @@
+import { nativeAvailable, nativeCommand } from './native-command.js';
+import { rustBinary } from './network-rust.js';
 import { constants } from 'node:fs';
 import { mkdir, open, realpath, unlink } from 'node:fs/promises';
 import path from 'node:path';
@@ -20,14 +22,20 @@ export function decodeImage(value: unknown) {
     throw new Error('Invalid SVG');
   return { ...image, bytes };
 }
+export async function decodeImageAsync(value: unknown) {
+  if (!await nativeAvailable()) return decodeImage(value);
+  const result = await nativeCommand('--assets', { op: 'decode', image: value });
+  return { ...result, bytes: Buffer.from(result.data, 'base64') };
+}
 export class AssetStore {
-  private constructor(readonly root: string) {}
+  private constructor(readonly root: string, readonly native = false, private readonly binary = process.env.FIGMA_RUST_BINARY ?? rustBinary) {}
   static async create(directory: string) {
     if (!path.isAbsolute(directory)) throw new Error('Asset directory must be absolute');
     await mkdir(directory, { recursive: true });
-    return new AssetStore(await realpath(directory));
+    return new AssetStore(await realpath(directory), await nativeAvailable());
   }
   async write(value: unknown) {
+    if (this.native) return nativeCommand('--assets', { op: 'write', root: this.root, image: value }, this.binary);
     const image = decodeImage(value);
     if (await realpath(this.root) !== this.root) throw new Error('Asset directory was replaced');
     // Flat, generated filenames: no agent-controlled paths, subfolders or overwrites.

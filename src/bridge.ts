@@ -1,3 +1,4 @@
+import { NativeWebSocketServer, nativeWebSocketEnabled } from './native-websocket.js';
 import { NetworkTransfer } from './network-transfer.js';
 import type { NetworkStore } from './network-store.js';
 import { randomUUID, timingSafeEqual } from 'node:crypto';
@@ -19,7 +20,9 @@ export class Bridge {
   private get captureBusy() { return [...this.transfers].some(transfer => transfer.busy); }
   readonly ready: Promise<void>;
   constructor(private secret: string, port = 3055, private timeout = 30_000, private cacheControl?: (action: 'cache-info' | 'cache-clear') => Promise<unknown>, private captureStore?: Pick<NetworkStore, 'begin' | 'observe' | 'renewObservation' | 'applyLive' | 'setSelection'>) {
-    this.server = new WebSocketServer({ host: '127.0.0.1', port, maxPayload: MAX_MESSAGE,
+    // Both transports expose the same narrow socket surface consumed below.
+    const Server = nativeWebSocketEnabled() ? NativeWebSocketServer as unknown as typeof WebSocketServer : WebSocketServer;
+    this.server = new Server({ host: '127.0.0.1', port, maxPayload: MAX_MESSAGE,
       perMessageDeflate: false, backlog: 8 });
     this.ready = new Promise((resolve, reject) => {
       this.server.once('listening', resolve);

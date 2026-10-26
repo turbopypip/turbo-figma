@@ -1,3 +1,5 @@
+import { rustBinary } from './network-rust.js';
+import { nativeAvailable, nativeCommand } from './native-command.js';
 import { constants } from 'node:fs';
 import { lstat, mkdir, open, opendir, realpath, rename, unlink, rmdir } from 'node:fs/promises';
 import path from 'node:path';
@@ -65,7 +67,8 @@ async function writeExclusive(filename: string, bytes: Uint8Array) {
 
 /** No queue: callers must await writes; concurrent operations fail with BUSY. */
 export class NetworkStore {
-  private constructor(readonly root: string, private readonly stamps: ReadonlyMap<string, string>, private readonly coordinator: Coordinator) {}
+  private constructor(readonly root: string, private readonly stamps: ReadonlyMap<string, string>, private readonly coordinator: Coordinator, readonly native = false, private readonly binary = process.env.FIGMA_RUST_BINARY ?? rustBinary) {}
+  private nativeCall(command: Record<string, unknown>, signal?: AbortSignal) { return nativeCommand('--store', { ...command, root: this.root, stamps: [...this.stamps] }, this.binary, signal); }
   private get busy() { return this.coordinator.busy; }
   private set busy(value: boolean) { this.coordinator.busy = value; }
   private get writerActive() { return this.coordinator.writerActive; }
@@ -81,7 +84,7 @@ export class NetworkStore {
     const root = path.join(project, '.cache', 'figma-network');
     const coordinator = coordinators.get(root)?.deref() ?? { busy: false, writerActive: false, readers: 0 };
     coordinators.set(root, new WeakRef(coordinator));
-    return new NetworkStore(root, stamps, coordinator);
+    return new NetworkStore(root, stamps, coordinator, await nativeAvailable());
   }
   /** Readers register disposal of derived disk/RAM state before cache maintenance. */
   onInvalidate(callback: () => Promise<void>): () => void {
@@ -182,9 +185,13 @@ export class NetworkStore {
       try { await lstat(directory); throw new Error('EEXIST: capture generation already exists'); }
       catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
       await this.cleanUnlocked('prune');
-      await mkdir(directory, { mode: 0o700 }); // Existing generations are never overwritten/reused.
-      const stamp = await directoryStamp(directory);
-      await writeExclusive(path.join(directory, 'capture.json'), Buffer.from(JSON.stringify({ owner: 'figma-kilo-mcp', version: 1, snapshot, ...(frame ? { frame } : {}) })));
+      const stamp: string = this.native ? await this.nativeCall({ op: 'begin', snapshot, frame }) : await (async () => {
+        await mkdir(directory, { mode: 0o700 });
+        const stamp = await directoryStamp(directory);
+        await writeExclusive(path.join(directory, 'capture.json'), Buffer.from(JSON.stringify({ owner: 'figma-kilo-mcp', version: 1, snapshot, ...(frame ? { frame } : {}) })));
+        return stamp;
+      })();
+      const nativeWriter = (op: string, extra: Record<string, unknown> = {}) => this.nativeCall({ op, snapshot, frame, stamp, ...extra });
       this.writerActive = true;
       let state = createCapture(snapshot);
       let total = 0;
@@ -212,8 +219,8 @@ export class NetworkStore {
           if (!(bytes instanceof Uint8Array) || !bytes.byteLength || bytes.byteLength > MAX_PART_BYTES || total + bytes.byteLength > MAX_TOTAL_BYTES) throw new Error('Part or snapshot size limit exceeded');
           // Own one bounded part so caller mutation cannot change persisted bytes/hash.
           const owned = Buffer.from(bytes);
-          await writeExclusive(path.join(directory, partName(sequence)), owned);
-          parts.push({ bytes: owned.length, sha256: digest(owned) });
+          if (this.native) parts.push(await nativeWriter('append', { sequence, data: owned.toString('base64') }));
+          else { await writeExclusive(path.join(directory, partName(sequence)), owned); parts.push({ bytes: owned.length, sha256: digest(owned) }); }
           total += owned.length;
         }),
         commit: async (evidence: Omit<InitialSnapshotEvidence, 'persistedParts' | 'metadataCommitted'>, signal?: AbortSignal) => run(async () => {
@@ -222,11 +229,14 @@ export class NetworkStore {
           const manifest: SnapshotManifest = { version: 1, status: 'ready', ...(monitored ? { monitored: true as const } : {}), snapshot, ...(frame ? { frame } : {}), parts };
           const encoded = Buffer.from(JSON.stringify(manifest));
           if (encoded.length > MAX_METADATA_BYTES) throw new Error('Metadata size limit exceeded');
-          await writeExclusive(path.join(directory, 'manifest.tmp'), encoded);
+          if (this.native) await nativeWriter('prepare', { manifest });
+          else await writeExclusive(path.join(directory, 'manifest.tmp'), encoded);
           signal?.throwIfAborted();
-          await rename(path.join(directory, 'manifest.tmp'), path.join(directory, 'ready.json'));
+          if (this.native) await nativeWriter('publish');
+          else await rename(path.join(directory, 'manifest.tmp'), path.join(directory, 'ready.json'));
           if (signal?.aborted) {
-            await unlink(path.join(directory, 'ready.json'));
+            if (this.native) await nativeWriter('unpublish');
+            else await unlink(path.join(directory, 'ready.json'));
             signal.throwIfAborted();
           }
           state = next;
@@ -241,6 +251,7 @@ export class NetworkStore {
     });
   }
   private async manifest(snapshot: SnapshotIdentity, frame?: FrameIdentity): Promise<SnapshotManifest> {
+    if (this.native) return this.nativeCall({ op: 'manifest', snapshot, frame });
     const directory = path.join(this.root, key(snapshot, frame));
     await directoryStamp(directory);
     const manifest = manifestSchema.parse(JSON.parse((await readBounded(path.join(directory, 'ready.json'), MAX_METADATA_BYTES)).toString('utf8')));
@@ -254,6 +265,7 @@ export class NetworkStore {
   async readPart(value: SnapshotIdentity, sequence: number, selection?: FrameIdentity): Promise<Buffer> {
     const snapshot = identity(value), frame = frameIdentity(selection);
     return this.operation(async () => {
+      if (this.native) return Buffer.from(await this.nativeCall({ op: 'part', snapshot, frame, sequence }), 'base64');
       const manifest = await this.manifest(snapshot, frame);
       if (!Number.isInteger(sequence) || sequence < 0 || sequence >= manifest.parts.length) throw new Error('Invalid part sequence');
       const expected = manifest.parts[sequence];
@@ -263,6 +275,30 @@ export class NetworkStore {
     });
   }
 
+  /** Reuse the owned native process, retaining guards, read lease and full hashes. */
+  async verifiedManifest(value: SnapshotIdentity, execute: (command: Record<string, unknown>) => Promise<any>): Promise<SnapshotManifest> {
+    if (!this.native) throw new Error('Native store required');
+    return this.operation(async () => {
+      const result = await execute({op:'verify',snapshot:identity(value),root:this.root,stamps:[...this.stamps],includeManifest:true});
+      return result.manifest;
+    });
+  }
+
+  /** Verify a retained snapshot without transferring all its bytes over IPC. */
+  async verifyParts(value: SnapshotIdentity, signal?: AbortSignal) {
+    if (signal?.aborted) throw new Error('Request cancelled');
+    let counts: { calls: number; bytes: number } | undefined;
+    if (this.native) counts = await this.operation(() => this.nativeCall({ op: 'verify', snapshot: identity(value) }, signal));
+    else {
+      const manifest = await this.readManifest(value);
+      for (let i = 0; i < manifest.parts.length; i++) {
+        if (signal?.aborted) throw new Error('Request cancelled');
+        await this.readPart(value, i);
+      }
+    }
+    if (signal?.aborted) throw new Error('Request cancelled');
+    return counts;
+  }
   /** Protect a complete multi-part read, including gaps between readPart calls. */
   async withRead<T>(read: () => Promise<T>): Promise<T> {
     await this.operation(async () => {
@@ -321,6 +357,7 @@ export class NetworkStore {
   }
   async info(): Promise<CacheInfo> {
     return this.operation(async () => {
+      if (this.native) return this.nativeCall({ op: 'info' });
       const { entries, protectedEntries } = await this.inventory();
       return { bytes: entries.reduce((n, e) => n + e.bytes, 0), generations: entries.length,
         incomplete: entries.filter(e => !e.ready).length, protectedEntries };
@@ -334,6 +371,7 @@ export class NetworkStore {
   private async cleanUnlocked(mode: 'all' | 'prune') {
     this.assertIdle();
     for (const invalidate of [...(this.coordinator.invalidators ?? [])]) await invalidate();
+    if (this.native) return this.nativeCall({ op: 'clean', mode });
     const { entries, protectedEntries } = await this.inventory();
     const groups = new Set<string>();
     let retainedBytes = 0, removedBytes = 0, removedGenerations = 0;

@@ -125,6 +125,9 @@ pub fn run(mode: &str, config: Option<&str>) -> Result<()> {
     )?;
     if runtime {
         out.flush()?;
+        let live_codec = crate::live::codec(&wire_schema)?;
+        let mut applied = 0usize;
+        let mut poisoned = false;
         let mut input = io::stdin().lock();
         loop {
             let mut header = [0; 4];
@@ -139,7 +142,41 @@ pub fn run(mode: &str, config: Option<&str>) -> Result<()> {
             let mut bytes = vec![0; len];
             input.read_exact(&mut bytes)?;
             let q: Value = serde_json::from_slice(&bytes)?;
-            let result = disk.runtime_command(&q);
+            let result = if poisoned {
+                Err("STALE: live index failed; recapture".into())
+            } else if q["op"] == "live" {
+                let result = (|| -> Result<Value> {
+                    let payload = q["payload"].as_str().ok_or("Invalid live payload")?;
+                    if payload.len() > 256 * 1024 || applied >= 128 {
+                        return Err("Live batch limit exceeded".into());
+                    }
+                    let bytes = base64::engine::general_purpose::STANDARD.decode(payload)?;
+                    if bytes.is_empty() {
+                        return Err("Invalid live base64".into());
+                    }
+                    let bytes = stage6::inflate(&bytes, 1024 * 1024)?;
+                    let mut changes = Vec::new();
+                    let message = live_codec.decode_strict(&bytes, &mut |n| {
+                        if changes.len() >= 256 {
+                            return Err("Live change count exceeded".into());
+                        }
+                        changes.push(value(n));
+                        Ok(())
+                    })?;
+                    if value(message)["type"] != "NODE_CHANGES" {
+                        return Err("Unsupported live message type".into());
+                    }
+                    disk.apply_live(&changes)?;
+                    applied += 1;
+                    Ok(json!({"applied":applied,"count":disk.count}))
+                })();
+                if result.is_err() {
+                    poisoned = true;
+                }
+                result
+            } else {
+                disk.runtime_command(&q)
+            };
             let reply = match result {
                 Ok(v) => json!({"result":v,"stats":disk.stats()}),
                 Err(e) => json!({"error":e.to_string()}),

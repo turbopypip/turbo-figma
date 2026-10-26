@@ -46,8 +46,11 @@ test('malformed and oversized messages disconnect safely', async t => {
   const b = await bridge(t);
   let peer = await pair(b.port, secret);
   let closed = once(peer, 'close'); peer.send('{invalid'); assert.equal((await closed)[0], 1008);
-  peer = await pair(b.port, secret);
-  closed = once(peer, 'close'); peer.send('x'.repeat(6 * 1024 * 1024 + 1)); assert.equal((await closed)[0], 1009);
+  // Repeated oversize/reconnect catches TCP RST racing the WebSocket close frame.
+  for (let i = 0; i < 3; i++) {
+    peer = await pair(b.port, secret);
+    closed = once(peer, 'close'); peer.send('x'.repeat(6 * 1024 * 1024 + 1)); assert.equal((await closed)[0], 1009);
+  }
   await pair(b.port, secret, mockBrowser);
   assert.equal((await b.request('get_selection', {})).total, 1);
 });

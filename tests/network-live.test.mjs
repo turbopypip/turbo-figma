@@ -156,9 +156,12 @@ test('collector forwards post-JOIN frame through real bridge to existing selecti
 });
 
 test('delta racing an active read cancels observation and cannot return the old selection',async t=>{
- const {store,sender}=await capture(t);const readPart=store.readPart.bind(store);
+ const {store,sender}=await capture(t);
  let entered,release;const started=new Promise(r=>{entered=r;});const gate=new Promise(r=>{release=r;});
- store.readPart=async(...args)=>{entered();await gate;return readPart(...args);};
+ for(const method of ['verifyParts','verifiedManifest']) {
+  const verify=store[method].bind(store);
+  store[method]=async(...args)=>{entered();await gate;return verify(...args);};
+ }
  const reading=readStoredNetworkSnapshot(store,snapshot,query);
  const rejected=assert.rejects(reading,/STALE|cancelled/);
  await started;
@@ -304,4 +307,33 @@ test('local network selection distinguishes unknown, remote, single, multiple an
  assert.deepEqual(store.currentSelection('test').ids,[]);
  await bridge.close();
  assert.throws(()=>store.currentSelection('test'),/STALE/);
+});
+
+test('Rust owns strict live decode and poisons native reads after a rejected batch',async t=>{
+ const {existsSync}=await import('node:fs');
+ const {RustSnapshot,rustBinary}=await import('../dist/network-rust.js');
+ const {workspace}=await import('../scripts/rust-helper/stage6-common.mjs');
+ if(!existsSync(rustBinary)){if(process.env.REQUIRE_RUST_HELPER)throw Error('Release helper required');t.skip('Release helper required');return;}
+ const w=await workspace(initial(),{snapshot});t.after(()=>rm(w.project,{recursive:true,force:true}));
+ for(const [changes,extra] of [
+  [[{guid:guid(3),unknown:'x'}],{}],
+  [[{guid:guid(3),size:{x:NaN,y:1}}],{}],
+  [[{guid:guid(3),name:'x'}],{isRetransmission:true}],
+  [[{guid:guid(2),phase:'REMOVED'}],{}],
+  [[{guid:guid(3),name:'partial'},{guid:guid(99),name:'missing'}],{}],
+  [[{guid:guid(2),parentIndex:{guid:guid(3),position:'x'}}],{}],
+ ]){
+  const scratch=await mkdtemp(join(w.store.root,'decode-'));const native=await RustSnapshot.open(w.store.root,w.snapshot,scratch);
+  try {
+   assert.equal((await native.request({op:'select',id:'1:2'})).error,undefined);
+   let result=await native.request({op:'live',payload:delta([{guid:guid(3),name:'native'}]).payload});
+   assert.deepEqual(result.result,{applied:1,count:6});
+   assert.equal((await native.request({op:'node',id:'1:3'})).result.name,'native');
+   result=await native.request({op:'live',payload:delta([node(5,2,'RECTANGLE','0')]).payload});assert.equal(result.result.count,7);
+   result=await native.request({op:'live',payload:delta([{guid:guid(5),phase:'REMOVED'}]).payload});assert.equal(result.result.count,6);
+   result=await native.request({op:'live',payload:delta(changes,4,extra).payload});assert.ok(result.error);
+   assert.match((await native.request({op:'node',id:'1:3'})).error,/STALE/);
+   assert.match((await native.request({op:'live',payload:delta([{guid:guid(3),name:'retry'}]).payload})).error,/STALE/);
+  }finally{await native.destroy();await rm(scratch,{recursive:true,force:true});}
+ }
 });

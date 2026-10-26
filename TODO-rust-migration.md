@@ -299,3 +299,17 @@
 По прямому запросу пользователя R01–R04 подключены к managed `readStoredNetworkSnapshot`, используемому MCP. На macOS выбран Rust по умолчанию. Rust удерживает индекс и кэш между страницами; Node-проекция получает только ограниченные записи/связи через IPC. Реализованы runtime-команды поиска, selection, asset lookup и запись поддержанных live-изменений. Полный контекст, протоколы, coordinator, проверки live и fallback ещё на Node. Исторические записи выше «production не переключён» описывают состояние на момент соответствующих прототипов.
 
 Подэтап 08б не выполнялся вместо этого запроса; этапы 09–16 не объявляются закрытыми. Отчёт с границами реализации, проверками, измерениями и оставшейся работой: [rust-runtime-status.md](docs/rust-runtime-status.md).
+
+
+### Файловый слой, live и транспорты — 26 октября 2026
+
+Реализованы и подключены native filesystem-команды NetworkStore, строгий live decoder/apply, PNG/SVG validation/write, WebSocket transport и MCP stdio через rmcp. State machine/leases, pairing/capture ownership, обработчики инструментов и полный дизайн-контекст остаются Node; этапы 09–12 не отмечаются завершёнными. Новые зависимости согласованы и проверены, сведения в docs/rust-dependency-security.md. Полный native-набор 342/342, Cargo 3/3. Измеренная warm-регрессия секции 20% сохраняется. Полный актуальный статус и границы интеграции — docs/rust-runtime-status.md.
+
+
+### Layout, стили и публичное представление — 26 октября 2026
+
+По запросу завершить перенос добавлены native layout/styles/text ranges/public-node formatting и ограниченный кэш проекций. Сравнения проверяют реальные страницы, повороты, порядок CSS, UTF-16, шрифты, лимиты и invalidation. Проверка manifest/частей повторно использует принадлежащий reader Rust-процесс. Пользователь разрешил больший расход CPU ради производительности; корректность и лимиты памяти сохраняются. Новых пакетов нет.
+
+**Запрос на полный перенос пока выполнен не полностью:** обход с instances/geometry chain, variable resolution/UI-kit, lifecycle/continuation, coordinator и tool handlers остаются Node. Этапы 09–12 не закрыты. Актуальные проверки и измерения — в [rust-runtime-status.md](docs/rust-runtime-status.md).
+
+Проверено: native 348/348, fallback 348/348, Cargo 3/3, check и diff --check. Финальный диагностический warm section: Node 191.4 мс / Rust 176.0 мс (−8.1%); cold section 1918.1 / 1276.0 мс. CPU/RAM и полный перенос не объявляются принятыми.

@@ -45,7 +45,6 @@ try {
   if (workerData.rust) {
     const schema = Buffer.from(workerData.rust.loaded.schema, 'base64');
     model.setLayoutSchemaHash(createHash('sha256').update(schema).digest('hex'));
-    liveCodec = new BoundedWireDecoder(schema, liveFields);
   } else if (workerData.snapshot) {
     if (workerData.snapshot.fileKey !== selection.fileKey) throw new Error('Selection file does not match capture');
     for await (const event of storedEvents(workerData.projectDirectory, workerData.snapshot)) consume(event);
@@ -79,16 +78,19 @@ try {
   if (workerData.retain) parentPort!.on('message', params => {
     try {
       if (params.livePayload !== undefined) {
-        if (!liveCodec || typeof params.livePayload !== 'string' || params.livePayload.length > LIVE_LIMITS.recordBytes) throw new Error('Invalid live payload');
-        const bytes = Buffer.from(params.livePayload, 'base64');
-        if (!bytes.length || bytes.toString('base64') !== params.livePayload) throw new Error('Invalid live base64');
-        const changes: Record<string, any>[] = [];
-        const message = liveCodec.decode(inflateFrame(bytes, 1024 * 1024), n => {
-          if (changes.length >= LIVE_LIMITS.changes) throw new Error('Live change count exceeded');
-          changes.push(n);
-        }, true);
-        if (message.type !== 'NODE_CHANGES') throw new Error('Unsupported live message type');
-        model!.applyLive(changes);
+        if (workerData.rust) model!.applyNativeLive(params.livePayload);
+        else {
+          if (!liveCodec || typeof params.livePayload !== 'string' || params.livePayload.length > LIVE_LIMITS.recordBytes) throw new Error('Invalid live payload');
+          const bytes = Buffer.from(params.livePayload, 'base64');
+          if (!bytes.length || bytes.toString('base64') !== params.livePayload) throw new Error('Invalid live base64');
+          const changes: Record<string, any>[] = [];
+          const message = liveCodec.decode(inflateFrame(bytes, 1024 * 1024), n => {
+            if (changes.length >= LIVE_LIMITS.changes) throw new Error('Live change count exceeded');
+            changes.push(n);
+          }, true);
+          if (message.type !== 'NODE_CHANGES') throw new Error('Unsupported live message type');
+          model!.applyLive(changes);
+        }
         // Validate the resulting selection before acknowledging; no partial result can escape.
         model!.query({ ...lastQuery, offset: 0, maxNodes: 1 });
         parentPort!.postMessage({ liveApplied: true });

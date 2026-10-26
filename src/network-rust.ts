@@ -81,19 +81,23 @@ export class RustSnapshot {
     const bytes = await this.read(size);
     return raw ? bytes : JSON.parse(bytes.toString('utf8'));
   }
-  async request(command: unknown, raw = false): Promise<any> {
+  async request(command: unknown, raw = false, signal?: AbortSignal, timeoutMs = 10000): Promise<any> {
+    if (signal?.aborted) throw new Error('Request cancelled');
     if (this.busy) throw new Error('Rust index is busy');
     if (this.stopped || this.failure) throw this.failure ?? new Error('Rust index is closed');
     const bytes = Buffer.from(JSON.stringify(command));
     if (bytes.length > 2 * 1024 * 1024) throw new Error('Rust request limit exceeded');
     this.busy = true;
-    const timer = setTimeout(() => { this.failure = new Error('Rust request timed out'); this.child.kill('SIGKILL'); }, 10000);
+    const abort = () => { this.failure = new Error('Request cancelled'); this.child.kill('SIGKILL'); };
+    signal?.addEventListener('abort',abort,{once:true});
+    if (signal?.aborted) abort();
+    const timer = setTimeout(() => { this.failure = new Error('Rust request timed out'); this.child.kill('SIGKILL'); }, timeoutMs);
     try {
       const header = Buffer.alloc(4); header.writeUInt32LE(bytes.length);
       this.child.stdin.write(header); this.child.stdin.write(bytes);
       return await this.packet(raw);
     } catch (e) { await this.destroy(); throw e; }
-    finally { clearTimeout(timer); this.busy = false; }
+    finally { clearTimeout(timer); signal?.removeEventListener('abort',abort); this.busy = false; }
   }
   async destroy() { this.child.kill('SIGKILL'); await this.closed; }
 }

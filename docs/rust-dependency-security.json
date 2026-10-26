@@ -1,0 +1,1267 @@
+{
+  "packages": [
+    {
+      "name": "android_system_properties",
+      "version": "0.1.6"
+    },
+    {
+      "name": "autocfg",
+      "version": "1.5.1"
+    },
+    {
+      "name": "block-buffer",
+      "version": "0.12.1"
+    },
+    {
+      "name": "bumpalo",
+      "version": "3.20.3"
+    },
+    {
+      "name": "bytes",
+      "version": "1.12.1"
+    },
+    {
+      "name": "cc",
+      "version": "1.10.0"
+    },
+    {
+      "name": "cfg-if",
+      "version": "1.0.5"
+    },
+    {
+      "name": "chacha20",
+      "version": "0.10.2"
+    },
+    {
+      "name": "chrono",
+      "version": "0.4.45"
+    },
+    {
+      "name": "const-oid",
+      "version": "0.10.2"
+    },
+    {
+      "name": "core-foundation-sys",
+      "version": "0.8.7"
+    },
+    {
+      "name": "cpufeatures",
+      "version": "0.3.1"
+    },
+    {
+      "name": "crypto-common",
+      "version": "0.2.2"
+    },
+    {
+      "name": "data-encoding",
+      "version": "2.11.1"
+    },
+    {
+      "name": "digest",
+      "version": "0.11.3"
+    },
+    {
+      "name": "dyn-clone",
+      "version": "1.0.20"
+    },
+    {
+      "name": "equivalent",
+      "version": "1.0.3"
+    },
+    {
+      "name": "find-msvc-tools",
+      "version": "0.1.15"
+    },
+    {
+      "name": "futures",
+      "version": "0.3.34"
+    },
+    {
+      "name": "futures-channel",
+      "version": "0.3.34"
+    },
+    {
+      "name": "futures-core",
+      "version": "0.3.34"
+    },
+    {
+      "name": "futures-executor",
+      "version": "0.3.34"
+    },
+    {
+      "name": "futures-io",
+      "version": "0.3.34"
+    },
+    {
+      "name": "futures-macro",
+      "version": "0.3.34"
+    },
+    {
+      "name": "futures-sink",
+      "version": "0.3.34"
+    },
+    {
+      "name": "futures-task",
+      "version": "0.3.34"
+    },
+    {
+      "name": "futures-util",
+      "version": "0.3.34"
+    },
+    {
+      "name": "getrandom",
+      "version": "0.4.3"
+    },
+    {
+      "name": "hashbrown",
+      "version": "0.17.1"
+    },
+    {
+      "name": "http",
+      "version": "1.5.0"
+    },
+    {
+      "name": "httparse",
+      "version": "1.10.1"
+    },
+    {
+      "name": "hybrid-array",
+      "version": "0.4.15"
+    },
+    {
+      "name": "iana-time-zone",
+      "version": "0.1.65"
+    },
+    {
+      "name": "iana-time-zone-haiku",
+      "version": "0.1.2"
+    },
+    {
+      "name": "indexmap",
+      "version": "2.14.2"
+    },
+    {
+      "name": "itoa",
+      "version": "1.0.18"
+    },
+    {
+      "name": "js-sys",
+      "version": "0.3.106"
+    },
+    {
+      "name": "libc",
+      "version": "0.2.191"
+    },
+    {
+      "name": "log",
+      "version": "0.4.34"
+    },
+    {
+      "name": "memchr",
+      "version": "2.8.3"
+    },
+    {
+      "name": "mio",
+      "version": "1.2.4"
+    },
+    {
+      "name": "num-traits",
+      "version": "0.2.19"
+    },
+    {
+      "name": "once_cell",
+      "version": "1.21.4"
+    },
+    {
+      "name": "pastey",
+      "version": "0.2.3"
+    },
+    {
+      "name": "pin-project-lite",
+      "version": "0.2.17"
+    },
+    {
+      "name": "proc-macro2",
+      "version": "1.0.107"
+    },
+    {
+      "name": "quote",
+      "version": "1.0.47"
+    },
+    {
+      "name": "r-efi",
+      "version": "6.0.0"
+    },
+    {
+      "name": "rand",
+      "version": "0.10.3"
+    },
+    {
+      "name": "rand_core",
+      "version": "0.10.1"
+    },
+    {
+      "name": "ref-cast",
+      "version": "1.0.27"
+    },
+    {
+      "name": "ref-cast-impl",
+      "version": "1.0.27"
+    },
+    {
+      "name": "rmcp",
+      "version": "3.7.0"
+    },
+    {
+      "name": "rustversion",
+      "version": "1.0.23"
+    },
+    {
+      "name": "schemars",
+      "version": "1.2.3"
+    },
+    {
+      "name": "schemars_derive",
+      "version": "1.2.3"
+    },
+    {
+      "name": "serde",
+      "version": "1.0.229"
+    },
+    {
+      "name": "serde_core",
+      "version": "1.0.229"
+    },
+    {
+      "name": "serde_derive",
+      "version": "1.0.229"
+    },
+    {
+      "name": "serde_derive_internals",
+      "version": "0.30.0"
+    },
+    {
+      "name": "serde_json",
+      "version": "1.0.154"
+    },
+    {
+      "name": "sha1",
+      "version": "0.11.0"
+    },
+    {
+      "name": "shlex",
+      "version": "2.0.1"
+    },
+    {
+      "name": "slab",
+      "version": "0.4.12"
+    },
+    {
+      "name": "socket2",
+      "version": "0.6.5"
+    },
+    {
+      "name": "syn",
+      "version": "2.0.119"
+    },
+    {
+      "name": "syn",
+      "version": "3.0.9"
+    },
+    {
+      "name": "thiserror",
+      "version": "2.0.21"
+    },
+    {
+      "name": "thiserror-impl",
+      "version": "2.0.21"
+    },
+    {
+      "name": "tinyvec",
+      "version": "1.13.3"
+    },
+    {
+      "name": "tokio",
+      "version": "1.54.1"
+    },
+    {
+      "name": "tokio-macros",
+      "version": "2.7.2"
+    },
+    {
+      "name": "tokio-tungstenite",
+      "version": "0.30.0"
+    },
+    {
+      "name": "tokio-util",
+      "version": "0.7.20"
+    },
+    {
+      "name": "tracing",
+      "version": "0.1.44"
+    },
+    {
+      "name": "tracing-attributes",
+      "version": "0.1.31"
+    },
+    {
+      "name": "tracing-core",
+      "version": "0.1.36"
+    },
+    {
+      "name": "tungstenite",
+      "version": "0.30.0"
+    },
+    {
+      "name": "typenum",
+      "version": "1.20.1"
+    },
+    {
+      "name": "unicode-ident",
+      "version": "1.0.27"
+    },
+    {
+      "name": "unicode-normalization",
+      "version": "0.1.26"
+    },
+    {
+      "name": "uuid",
+      "version": "1.29.0"
+    },
+    {
+      "name": "wasi",
+      "version": "0.11.1+wasi-snapshot-preview1"
+    },
+    {
+      "name": "wasm-bindgen",
+      "version": "0.2.129"
+    },
+    {
+      "name": "wasm-bindgen-macro",
+      "version": "0.2.129"
+    },
+    {
+      "name": "wasm-bindgen-macro-support",
+      "version": "0.2.129"
+    },
+    {
+      "name": "wasm-bindgen-shared",
+      "version": "0.2.129"
+    },
+    {
+      "name": "windows-core",
+      "version": "0.62.2"
+    },
+    {
+      "name": "windows-implement",
+      "version": "0.60.2"
+    },
+    {
+      "name": "windows-interface",
+      "version": "0.59.3"
+    },
+    {
+      "name": "windows-link",
+      "version": "0.2.1"
+    },
+    {
+      "name": "windows-result",
+      "version": "0.4.1"
+    },
+    {
+      "name": "windows-strings",
+      "version": "0.5.1"
+    },
+    {
+      "name": "windows-sys",
+      "version": "0.61.2"
+    },
+    {
+      "name": "zmij",
+      "version": "1.0.23"
+    }
+  ],
+  "response": {
+    "results": [
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {}
+    ]
+  },
+  "checkedDate": "2026-10-26",
+  "scope": "Prospective isolated manifest; not production Cargo.lock",
+  "direct": {
+    "tokio": "1.54.1",
+    "tokio-tungstenite": "0.30.0",
+    "rmcp": "3.7.0",
+    "unicode-normalization": "0.1.26"
+  },
+  "buildCode": [
+    {
+      "name": "futures-macro",
+      "version": "0.3.34",
+      "kinds": [
+        [
+          "proc-macro"
+        ]
+      ]
+    },
+    {
+      "name": "getrandom",
+      "version": "0.4.3",
+      "kinds": [
+        [
+          "custom-build"
+        ]
+      ]
+    },
+    {
+      "name": "httparse",
+      "version": "1.10.1",
+      "kinds": [
+        [
+          "custom-build"
+        ]
+      ]
+    },
+    {
+      "name": "iana-time-zone-haiku",
+      "version": "0.1.2",
+      "kinds": [
+        [
+          "custom-build"
+        ]
+      ]
+    },
+    {
+      "name": "libc",
+      "version": "0.2.191",
+      "kinds": [
+        [
+          "custom-build"
+        ]
+      ]
+    },
+    {
+      "name": "num-traits",
+      "version": "0.2.19",
+      "kinds": [
+        [
+          "custom-build"
+        ]
+      ]
+    },
+    {
+      "name": "pastey",
+      "version": "0.2.3",
+      "kinds": [
+        [
+          "proc-macro"
+        ]
+      ]
+    },
+    {
+      "name": "proc-macro2",
+      "version": "1.0.107",
+      "kinds": [
+        [
+          "custom-build"
+        ]
+      ]
+    },
+    {
+      "name": "quote",
+      "version": "1.0.47",
+      "kinds": [
+        [
+          "custom-build"
+        ]
+      ]
+    },
+    {
+      "name": "ref-cast",
+      "version": "1.0.27",
+      "kinds": [
+        [
+          "custom-build"
+        ]
+      ]
+    },
+    {
+      "name": "ref-cast-impl",
+      "version": "1.0.27",
+      "kinds": [
+        [
+          "proc-macro"
+        ]
+      ]
+    },
+    {
+      "name": "rmcp",
+      "version": "3.7.0",
+      "kinds": [
+        [
+          "custom-build"
+        ]
+      ]
+    },
+    {
+      "name": "rustversion",
+      "version": "1.0.23",
+      "kinds": [
+        [
+          "proc-macro"
+        ],
+        [
+          "custom-build"
+        ]
+      ]
+    },
+    {
+      "name": "schemars_derive",
+      "version": "1.2.3",
+      "kinds": [
+        [
+          "proc-macro"
+        ]
+      ]
+    },
+    {
+      "name": "serde",
+      "version": "1.0.229",
+      "kinds": [
+        [
+          "custom-build"
+        ]
+      ]
+    },
+    {
+      "name": "serde_core",
+      "version": "1.0.229",
+      "kinds": [
+        [
+          "custom-build"
+        ]
+      ]
+    },
+    {
+      "name": "serde_derive",
+      "version": "1.0.229",
+      "kinds": [
+        [
+          "proc-macro"
+        ]
+      ]
+    },
+    {
+      "name": "serde_json",
+      "version": "1.0.154",
+      "kinds": [
+        [
+          "custom-build"
+        ]
+      ]
+    },
+    {
+      "name": "thiserror",
+      "version": "2.0.21",
+      "kinds": [
+        [
+          "custom-build"
+        ]
+      ]
+    },
+    {
+      "name": "thiserror-impl",
+      "version": "2.0.21",
+      "kinds": [
+        [
+          "proc-macro"
+        ]
+      ]
+    },
+    {
+      "name": "tokio-macros",
+      "version": "2.7.2",
+      "kinds": [
+        [
+          "proc-macro"
+        ]
+      ]
+    },
+    {
+      "name": "tracing-attributes",
+      "version": "0.1.31",
+      "kinds": [
+        [
+          "proc-macro"
+        ]
+      ]
+    },
+    {
+      "name": "wasm-bindgen",
+      "version": "0.2.129",
+      "kinds": [
+        [
+          "custom-build"
+        ]
+      ]
+    },
+    {
+      "name": "wasm-bindgen-macro",
+      "version": "0.2.129",
+      "kinds": [
+        [
+          "proc-macro"
+        ]
+      ]
+    },
+    {
+      "name": "wasm-bindgen-shared",
+      "version": "0.2.129",
+      "kinds": [
+        [
+          "custom-build"
+        ]
+      ]
+    },
+    {
+      "name": "windows-implement",
+      "version": "0.60.2",
+      "kinds": [
+        [
+          "proc-macro"
+        ]
+      ]
+    },
+    {
+      "name": "windows-interface",
+      "version": "0.59.3",
+      "kinds": [
+        [
+          "proc-macro"
+        ]
+      ]
+    },
+    {
+      "name": "zmij",
+      "version": "1.0.23",
+      "kinds": [
+        [
+          "custom-build"
+        ]
+      ]
+    }
+  ],
+  "productionLock": {
+    "checkedDate": "2026-10-26",
+    "packages": [
+      {
+        "name": "android_system_properties",
+        "version": "0.1.6"
+      },
+      {
+        "name": "autocfg",
+        "version": "1.5.1"
+      },
+      {
+        "name": "base64",
+        "version": "0.23.1"
+      },
+      {
+        "name": "block-buffer",
+        "version": "0.12.1"
+      },
+      {
+        "name": "bumpalo",
+        "version": "3.20.3"
+      },
+      {
+        "name": "bytes",
+        "version": "1.12.1"
+      },
+      {
+        "name": "cc",
+        "version": "1.10.0"
+      },
+      {
+        "name": "cfg-if",
+        "version": "1.0.5"
+      },
+      {
+        "name": "chacha20",
+        "version": "0.10.2"
+      },
+      {
+        "name": "chrono",
+        "version": "0.4.45"
+      },
+      {
+        "name": "const-oid",
+        "version": "0.10.2"
+      },
+      {
+        "name": "core-foundation-sys",
+        "version": "0.8.7"
+      },
+      {
+        "name": "cpufeatures",
+        "version": "0.3.1"
+      },
+      {
+        "name": "crypto-common",
+        "version": "0.2.2"
+      },
+      {
+        "name": "data-encoding",
+        "version": "2.11.1"
+      },
+      {
+        "name": "digest",
+        "version": "0.11.3"
+      },
+      {
+        "name": "dyn-clone",
+        "version": "1.0.20"
+      },
+      {
+        "name": "equivalent",
+        "version": "1.0.3"
+      },
+      {
+        "name": "find-msvc-tools",
+        "version": "0.1.15"
+      },
+      {
+        "name": "futures",
+        "version": "0.3.34"
+      },
+      {
+        "name": "futures-channel",
+        "version": "0.3.34"
+      },
+      {
+        "name": "futures-core",
+        "version": "0.3.34"
+      },
+      {
+        "name": "futures-executor",
+        "version": "0.3.34"
+      },
+      {
+        "name": "futures-io",
+        "version": "0.3.34"
+      },
+      {
+        "name": "futures-macro",
+        "version": "0.3.34"
+      },
+      {
+        "name": "futures-sink",
+        "version": "0.3.34"
+      },
+      {
+        "name": "futures-task",
+        "version": "0.3.34"
+      },
+      {
+        "name": "futures-util",
+        "version": "0.3.34"
+      },
+      {
+        "name": "getrandom",
+        "version": "0.4.3"
+      },
+      {
+        "name": "hashbrown",
+        "version": "0.17.1"
+      },
+      {
+        "name": "http",
+        "version": "1.5.0"
+      },
+      {
+        "name": "httparse",
+        "version": "1.10.1"
+      },
+      {
+        "name": "hybrid-array",
+        "version": "0.4.15"
+      },
+      {
+        "name": "iana-time-zone",
+        "version": "0.1.65"
+      },
+      {
+        "name": "iana-time-zone-haiku",
+        "version": "0.1.2"
+      },
+      {
+        "name": "indexmap",
+        "version": "2.14.2"
+      },
+      {
+        "name": "itoa",
+        "version": "1.0.18"
+      },
+      {
+        "name": "jobserver",
+        "version": "0.1.35"
+      },
+      {
+        "name": "js-sys",
+        "version": "0.3.106"
+      },
+      {
+        "name": "libc",
+        "version": "0.2.191"
+      },
+      {
+        "name": "log",
+        "version": "0.4.34"
+      },
+      {
+        "name": "memchr",
+        "version": "2.8.3"
+      },
+      {
+        "name": "mio",
+        "version": "1.2.4"
+      },
+      {
+        "name": "num-traits",
+        "version": "0.2.19"
+      },
+      {
+        "name": "once_cell",
+        "version": "1.21.4"
+      },
+      {
+        "name": "pastey",
+        "version": "0.2.3"
+      },
+      {
+        "name": "pin-project-lite",
+        "version": "0.2.17"
+      },
+      {
+        "name": "pkg-config",
+        "version": "0.3.34"
+      },
+      {
+        "name": "proc-macro2",
+        "version": "1.0.107"
+      },
+      {
+        "name": "quote",
+        "version": "1.0.47"
+      },
+      {
+        "name": "r-efi",
+        "version": "6.0.0"
+      },
+      {
+        "name": "rand",
+        "version": "0.10.3"
+      },
+      {
+        "name": "rand_core",
+        "version": "0.10.1"
+      },
+      {
+        "name": "ref-cast",
+        "version": "1.0.27"
+      },
+      {
+        "name": "ref-cast-impl",
+        "version": "1.0.27"
+      },
+      {
+        "name": "rmcp",
+        "version": "3.7.0"
+      },
+      {
+        "name": "rustversion",
+        "version": "1.0.23"
+      },
+      {
+        "name": "schemars",
+        "version": "1.2.3"
+      },
+      {
+        "name": "schemars_derive",
+        "version": "1.2.3"
+      },
+      {
+        "name": "serde",
+        "version": "1.0.229"
+      },
+      {
+        "name": "serde_core",
+        "version": "1.0.229"
+      },
+      {
+        "name": "serde_derive",
+        "version": "1.0.229"
+      },
+      {
+        "name": "serde_derive_internals",
+        "version": "0.30.0"
+      },
+      {
+        "name": "serde_json",
+        "version": "1.0.154"
+      },
+      {
+        "name": "sha1",
+        "version": "0.11.0"
+      },
+      {
+        "name": "sha2",
+        "version": "0.11.1"
+      },
+      {
+        "name": "shlex",
+        "version": "2.0.1"
+      },
+      {
+        "name": "slab",
+        "version": "0.4.12"
+      },
+      {
+        "name": "socket2",
+        "version": "0.6.5"
+      },
+      {
+        "name": "syn",
+        "version": "2.0.119"
+      },
+      {
+        "name": "syn",
+        "version": "3.0.9"
+      },
+      {
+        "name": "thiserror",
+        "version": "2.0.21"
+      },
+      {
+        "name": "thiserror-impl",
+        "version": "2.0.21"
+      },
+      {
+        "name": "tinyvec",
+        "version": "1.13.3"
+      },
+      {
+        "name": "tokio",
+        "version": "1.54.1"
+      },
+      {
+        "name": "tokio-macros",
+        "version": "2.7.2"
+      },
+      {
+        "name": "tokio-tungstenite",
+        "version": "0.30.0"
+      },
+      {
+        "name": "tokio-util",
+        "version": "0.7.20"
+      },
+      {
+        "name": "tracing",
+        "version": "0.1.44"
+      },
+      {
+        "name": "tracing-attributes",
+        "version": "0.1.31"
+      },
+      {
+        "name": "tracing-core",
+        "version": "0.1.36"
+      },
+      {
+        "name": "tungstenite",
+        "version": "0.30.0"
+      },
+      {
+        "name": "typenum",
+        "version": "1.20.1"
+      },
+      {
+        "name": "unicode-ident",
+        "version": "1.0.27"
+      },
+      {
+        "name": "unicode-normalization",
+        "version": "0.1.26"
+      },
+      {
+        "name": "uuid",
+        "version": "1.29.0"
+      },
+      {
+        "name": "wasi",
+        "version": "0.11.1+wasi-snapshot-preview1"
+      },
+      {
+        "name": "wasm-bindgen",
+        "version": "0.2.129"
+      },
+      {
+        "name": "wasm-bindgen-macro",
+        "version": "0.2.129"
+      },
+      {
+        "name": "wasm-bindgen-macro-support",
+        "version": "0.2.129"
+      },
+      {
+        "name": "wasm-bindgen-shared",
+        "version": "0.2.129"
+      },
+      {
+        "name": "windows-core",
+        "version": "0.62.2"
+      },
+      {
+        "name": "windows-implement",
+        "version": "0.60.2"
+      },
+      {
+        "name": "windows-interface",
+        "version": "0.59.3"
+      },
+      {
+        "name": "windows-link",
+        "version": "0.2.1"
+      },
+      {
+        "name": "windows-result",
+        "version": "0.4.1"
+      },
+      {
+        "name": "windows-strings",
+        "version": "0.5.1"
+      },
+      {
+        "name": "windows-sys",
+        "version": "0.61.2"
+      },
+      {
+        "name": "zmij",
+        "version": "1.0.23"
+      },
+      {
+        "name": "zstd",
+        "version": "0.14.3"
+      },
+      {
+        "name": "zstd-safe",
+        "version": "8.2.0"
+      },
+      {
+        "name": "zstd-sys",
+        "version": "2.1.2+zstd.1.5.7"
+      }
+    ],
+    "response": {
+      "results": [
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {},
+        {}
+      ]
+    }
+  }
+}

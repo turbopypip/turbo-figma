@@ -58,6 +58,10 @@ test('gaps, duplicates, oversized parts and incomplete evidence fail closed', as
   }
 });
 test('partial disk write and sync failure leave no ready manifest and release writer', async t => {
+  // This fault injection targets Node FileHandle specifically; native failures have separate integration coverage.
+  const backend = process.env.FIGMA_NETWORK_BACKEND;
+  process.env.FIGMA_NETWORK_BACKEND = 'node';
+  t.after(() => { if (backend === undefined) delete process.env.FIGMA_NETWORK_BACKEND; else process.env.FIGMA_NETWORK_BACKEND = backend; });
   const { store, project, generation } = await fixture(t);
   const probe = await open(path.join(project, 'probe'), 'wx');
   const proto = Object.getPrototypeOf(probe);

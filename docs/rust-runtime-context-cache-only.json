@@ -1,0 +1,252 @@
+{
+  "date": "2026-10-26",
+  "platform": "darwin",
+  "arch": "arm64",
+  "node": "v20.12.2",
+  "method": "3 runs per backend/selection, alternating order, one host, fresh retained state per cold run, all context pages with UI-kit; no forced GC; RAM/CPU not measured; diagnostic only",
+  "summary": [
+    {
+      "scenario": "component",
+      "backend": "node",
+      "coldFirstMs": 1660.230125,
+      "coldAllMs": 1668.8434590000006,
+      "warmAllMs": 17.205166999999847,
+      "pages": 2,
+      "nodes": 5
+    },
+    {
+      "scenario": "component",
+      "backend": "rust",
+      "coldFirstMs": 1088.8749580000003,
+      "coldAllMs": 1102.1957079999993,
+      "warmAllMs": 21.70245799999975,
+      "pages": 2,
+      "nodes": 5
+    },
+    {
+      "scenario": "section",
+      "backend": "node",
+      "coldFirstMs": 1731.3018749999992,
+      "coldAllMs": 1908.5905829999992,
+      "warmAllMs": 193.49745900000016,
+      "pages": 13,
+      "nodes": 39
+    },
+    {
+      "scenario": "section",
+      "backend": "rust",
+      "coldFirstMs": 1077.7255830000013,
+      "coldAllMs": 1334.7025000000012,
+      "warmAllMs": 241.83599999999933,
+      "pages": 13,
+      "nodes": 39
+    }
+  ],
+  "results": [
+    {
+      "scenario": "component",
+      "backend": "node",
+      "run": 0,
+      "cold": {
+        "firstMs": 1699.497625,
+        "totalMs": 1709.7621669999999,
+        "pages": 2,
+        "nodes": 5
+      },
+      "warm": {
+        "firstMs": 9.412582999999813,
+        "totalMs": 17.205166999999847,
+        "pages": 2,
+        "nodes": 5
+      }
+    },
+    {
+      "scenario": "component",
+      "backend": "rust",
+      "run": 0,
+      "cold": {
+        "firstMs": 1056.828542,
+        "totalMs": 1074.398958,
+        "pages": 2,
+        "nodes": 5
+      },
+      "warm": {
+        "firstMs": 13.260499999999865,
+        "totalMs": 23.699125000000095,
+        "pages": 2,
+        "nodes": 5
+      }
+    },
+    {
+      "scenario": "component",
+      "backend": "rust",
+      "run": 1,
+      "cold": {
+        "firstMs": 1134.2228750000004,
+        "totalMs": 1148.8312500000002,
+        "pages": 2,
+        "nodes": 5
+      },
+      "warm": {
+        "firstMs": 11.58575000000019,
+        "totalMs": 21.47370899999987,
+        "pages": 2,
+        "nodes": 5
+      }
+    },
+    {
+      "scenario": "component",
+      "backend": "node",
+      "run": 1,
+      "cold": {
+        "firstMs": 1658.4327919999996,
+        "totalMs": 1666.938083,
+        "pages": 2,
+        "nodes": 5
+      },
+      "warm": {
+        "firstMs": 9.358041999999841,
+        "totalMs": 19.94591700000001,
+        "pages": 2,
+        "nodes": 5
+      }
+    },
+    {
+      "scenario": "component",
+      "backend": "node",
+      "run": 2,
+      "cold": {
+        "firstMs": 1660.230125,
+        "totalMs": 1668.8434590000006,
+        "pages": 2,
+        "nodes": 5
+      },
+      "warm": {
+        "firstMs": 9.069833000000472,
+        "totalMs": 16.780250000000706,
+        "pages": 2,
+        "nodes": 5
+      }
+    },
+    {
+      "scenario": "component",
+      "backend": "rust",
+      "run": 2,
+      "cold": {
+        "firstMs": 1088.8749580000003,
+        "totalMs": 1102.1957079999993,
+        "pages": 2,
+        "nodes": 5
+      },
+      "warm": {
+        "firstMs": 11.492582999999286,
+        "totalMs": 21.70245799999975,
+        "pages": 2,
+        "nodes": 5
+      }
+    },
+    {
+      "scenario": "section",
+      "backend": "node",
+      "run": 0,
+      "cold": {
+        "firstMs": 1678.710916,
+        "totalMs": 1863.2475409999988,
+        "pages": 13,
+        "nodes": 39
+      },
+      "warm": {
+        "firstMs": 16.962499999999636,
+        "totalMs": 185.73545899999954,
+        "pages": 13,
+        "nodes": 39
+      }
+    },
+    {
+      "scenario": "section",
+      "backend": "rust",
+      "run": 0,
+      "cold": {
+        "firstMs": 1077.7255830000013,
+        "totalMs": 1334.7025000000012,
+        "pages": 13,
+        "nodes": 39
+      },
+      "warm": {
+        "firstMs": 20.160625000000437,
+        "totalMs": 239.22208300000057,
+        "pages": 13,
+        "nodes": 39
+      }
+    },
+    {
+      "scenario": "section",
+      "backend": "rust",
+      "run": 1,
+      "cold": {
+        "firstMs": 1059.596916999999,
+        "totalMs": 1308.309374999999,
+        "pages": 13,
+        "nodes": 39
+      },
+      "warm": {
+        "firstMs": 20.15662500000144,
+        "totalMs": 244.1544580000009,
+        "pages": 13,
+        "nodes": 39
+      }
+    },
+    {
+      "scenario": "section",
+      "backend": "node",
+      "run": 1,
+      "cold": {
+        "firstMs": 1731.3018749999992,
+        "totalMs": 1908.5905829999992,
+        "pages": 13,
+        "nodes": 39
+      },
+      "warm": {
+        "firstMs": 14.163000000000466,
+        "totalMs": 193.49745900000016,
+        "pages": 13,
+        "nodes": 39
+      }
+    },
+    {
+      "scenario": "section",
+      "backend": "node",
+      "run": 2,
+      "cold": {
+        "firstMs": 1749.2745410000007,
+        "totalMs": 1959.8334159999995,
+        "pages": 13,
+        "nodes": 39
+      },
+      "warm": {
+        "firstMs": 21.058000000000902,
+        "totalMs": 201.96158400000058,
+        "pages": 13,
+        "nodes": 39
+      }
+    },
+    {
+      "scenario": "section",
+      "backend": "rust",
+      "run": 2,
+      "cold": {
+        "firstMs": 1125.9359170000025,
+        "totalMs": 1372.8753749999996,
+        "pages": 13,
+        "nodes": 39
+      },
+      "warm": {
+        "firstMs": 19.37883299999885,
+        "totalMs": 241.83599999999933,
+        "pages": 13,
+        "nodes": 39
+      }
+    }
+  ],
+  "variant": "projection cache enabled, before retained manifest/part verification"
+}

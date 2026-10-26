@@ -33,7 +33,7 @@ export class RustStorage {
   }
   call(command: Record<string, unknown>): any {
     const read = ['node','slot','children','asset'].includes(String(command.op));
-    if (!read) { this.page.clear(); this.pageBytes = 0; this.known.clear(); this.knownBytes = 0; }
+    if (!read && command.op !== 'project') { this.page.clear(); this.pageBytes = 0; this.known.clear(); this.knownBytes = 0; }
     const key = JSON.stringify(command), cached = read ? this.page.get(key) : undefined;
     if (cached !== undefined) return JSON.parse(cached);
     const result = this.exchange(command);

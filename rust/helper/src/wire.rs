@@ -290,12 +290,28 @@ impl Decoder {
         bytes: &[u8],
         visit: &mut impl FnMut(Value) -> Result<()>,
     ) -> Result<Value> {
+        self.decode_mode(bytes, visit, false)
+    }
+    pub fn decode_strict(
+        &self,
+        bytes: &[u8],
+        visit: &mut impl FnMut(Value) -> Result<()>,
+    ) -> Result<Value> {
+        self.decode_mode(bytes, visit, true)
+    }
+    fn decode_mode(
+        &self,
+        bytes: &[u8],
+        visit: &mut impl FnMut(Value) -> Result<()>,
+        strict: bool,
+    ) -> Result<Value> {
         check(
             bytes.len() <= 64 * 1024 * 1024,
             "Wire frame size limit exceeded",
         )?;
         let mut state = State {
             decoder: self,
+            strict,
             r: Reader {
                 data: bytes,
                 pos: 0,
@@ -313,6 +329,7 @@ impl Decoder {
 }
 struct State<'a, 'b, F> {
     decoder: &'a Decoder,
+    strict: bool,
     r: Reader<'b>,
     operations: usize,
     node_start: usize,
@@ -360,6 +377,7 @@ impl<F: FnMut(Value) -> Result<()>> State<'_, '_, F> {
                         u32::from_le_bytes([b, rest[0], rest[1], rest[2]]).rotate_right(9),
                     ) as f64
                 };
+                check(!self.strict || n.is_finite(), "Nonfinite live value")?;
                 Some(Value::Num(n))
             }
             -6 => {
@@ -435,6 +453,14 @@ impl<F: FnMut(Value) -> Result<()>> State<'_, '_, F> {
             self.tick()?;
             let stream = depth == 0 && d.name == "Message" && f.name == "nodeChanges";
             let retain = keep && f.retain;
+            if self.strict {
+                check(
+                    !(d.name == "Message" && f.name != "type" && f.name != "nodeChanges")
+                        && !(d.name == "NodeChange" && !f.retain),
+                    "Unsupported live wire field",
+                )?;
+                check(!keep || retain || stream, "Unsupported nested live field")?;
+            }
             let value = if !f.array {
                 self.read(f.ty, retain, depth + 1)?
             } else {

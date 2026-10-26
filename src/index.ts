@@ -1,3 +1,5 @@
+import { nativeAvailable } from './native-command.js';
+import { NativeToolRegistry, serveNativeMcp } from './native-mcp.js';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
@@ -27,7 +29,11 @@ async function main() {
   catch { throw new Error(`Cannot listen on 127.0.0.1:${config.port}. Close the other MCP session or change the port in the server and extension.`); }
   try { await cache.clean('prune'); }
   catch (error) { await bridge.close(); throw error; }
-  const handle = serveStdio(() => createServer(bridge, assets, config.variablesFile, cache), { onerror: () => console.error('MCP transport error') });
+  const registry = await nativeAvailable() ? new NativeToolRegistry() : undefined;
+  const server = createServer(bridge, assets, config.variablesFile, cache, undefined, false, registry?.factory);
+  const nativeHandle = registry ? await serveNativeMcp(registry) : undefined;
+  if (nativeHandle) console.error('MCP stdio backend: rust');
+  const handle = nativeHandle ?? serveStdio(() => server, { onerror: () => console.error('MCP transport error') });
   let closing = false;
   const close = async () => {
     if (closing) return;
@@ -35,8 +41,8 @@ async function main() {
     try { await bridge.close(); }
     finally { try { await stopNetworkSelection(); } finally { await handle.close(); } }
   };
-  process.stdin.once('end', () => void close());
-  process.stdin.once('close', () => void close());
+  if (nativeHandle) void nativeHandle.done.then(close);
+  else { process.stdin.once('end', () => void close()); process.stdin.once('close', () => void close()); }
   process.once('SIGINT', () => void close());
   process.once('SIGTERM', () => void close());
   console.error(`Figma bridge listening on ws://127.0.0.1:${config.port}. Pair the ${config.adapter} adapter. Assets: ${assets.root}`);
