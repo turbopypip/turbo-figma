@@ -27,7 +27,7 @@ if (config) {
 }
 await writeFile(path.join(local, 'pairing.txt'), `turbo-figma\nEndpoint: ws://127.0.0.1:${config.port}\nSecret: ${config.secret}\n`, { mode: 0o600 });
 const command = [binary, '--server', configPath, root];
-await writeFile(path.join(local, 'kilo.json'), JSON.stringify({ mcp: { 'turbo-figma': {
+await writeFile(path.join(local, 'kilo.json'), JSON.stringify({ mcp: { 'turbo_figma': {
   type: 'local', command, enabled: true,
   timeout: 60000
 } } }, null, 2) + '\n');

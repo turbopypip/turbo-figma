@@ -1,3 +1,4 @@
+import { t, popupSource } from './i18n-fixture.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createConnection } from '../extension/connection.js';
@@ -91,7 +92,7 @@ test('popup close only stops UI refresh; information goes directly to README',as
   const html=await readFile(new URL('../extension/popup.html',import.meta.url),'utf8');
   const elements=Object.fromEntries(['status','target','connect','secret','port','submit','disconnect','forget','saved-secret','secret-field','change-secret','cache-status','cache-info','cache-clear'].map(id=>[id,{value:'',addEventListener(){}}]));
   const sent=[];let close,cleared=false;
-  vm.runInNewContext(source,{document:{getElementById:id=>elements[id]},window:{addEventListener:(name,fn)=>{close=fn;}},
+  vm.runInNewContext(popupSource(source),{t,localizeDocument:()=>{},document:{getElementById:id=>elements[id]},window:{addEventListener:(name,fn)=>{close=fn;}},
     setInterval:()=>1,clearInterval:()=>{cleared=true;},
     chrome:{tabs:{query:async()=>[{id:7,url:'https://www.figma.com/design/test/name'}]},storage:{onChanged:{addListener(){},removeListener(){}},local:{get:async()=>({})}},runtime:{sendMessage:async msg=>{sent.push(msg);return {state:'connected',message:'Подключено'};}}}});
   await flush();assert.equal(elements['secret-field'].hidden,false);assert.equal(elements.secret.required,true);close();assert.equal(cleared,true);assert.deepEqual(sent.map(m=>m.action),['status','cache-info']);
@@ -150,7 +151,7 @@ test('a new popup on another Figma tab submits an empty secret and the saved por
   const source=await readFile(new URL('../extension/popup.js',import.meta.url),'utf8');
   const elements=Object.fromEntries(['status','target','connect','secret','port','submit','disconnect','forget','saved-secret','secret-field','change-secret','cache-status','cache-info','cache-clear'].map(id=>[id,{value:'',listeners:{},addEventListener(event,fn){this.listeners[event]=fn;}}]));
   const sent=[];
-  vm.runInNewContext(source,{Date,Number,document:{getElementById:id=>elements[id]},window:{addEventListener(){}},setInterval:()=>1,clearInterval(){},
+  vm.runInNewContext(popupSource(source),{t,localizeDocument:()=>{},Date,Number,document:{getElementById:id=>elements[id]},window:{addEventListener(){}},setInterval:()=>1,clearInterval(){},
     chrome:{tabs:{query:async()=>[{id:8,url:'https://www.figma.com/design/second/name'}]},storage:{onChanged:{addListener(){},removeListener(){}},local:{get:async()=>({pairing:{port:4055,secret}})}},runtime:{sendMessage:async msg=>{sent.push(msg);return {state:'connected',tabId:7,message:'Подключено'};}}}});
   await flush();
   assert.equal(elements['secret-field'].hidden,true);
@@ -193,7 +194,7 @@ test('popup cache button sends one explicit clear command and keeps cache feedba
     return elements.get(id);
   };
   const sent=[];
-  vm.runInNewContext(source,{document:{getElementById:element},window:{addEventListener(){}},setInterval:()=>1,clearInterval(){},
+  vm.runInNewContext(popupSource(source),{t,localizeDocument:()=>{},document:{getElementById:element},window:{addEventListener(){}},setInterval:()=>1,clearInterval(){},
     chrome:{tabs:{query:async()=>[{id:7,url:'https://www.figma.com/design/test/name'}]},storage:{onChanged:{addListener(){},removeListener(){}},local:{get:async()=>({})}},
       runtime:{sendMessage:async msg=>{sent.push(msg);return msg.action==='status'?{state:'connected',message:'Подключено'}:
         {cache:{bytes:0,removedBytes:1024,removedGenerations:2,protectedEntries:1}};}}}});
@@ -257,7 +258,7 @@ test('cache size refresh waits for capture and preserves size while MCP is busy'
   const {readFile}=await import('node:fs/promises');const vm=await import('node:vm');
   const elements=new Map();const element=id=>{if(!elements.has(id))elements.set(id,{value:'',addEventListener(){}});return elements.get(id);};
   let refresh,now=20000,state={state:'connected',capture:{state:'capturing'}};const sent=[];
-  vm.runInNewContext(await readFile('extension/popup.js','utf8'),{
+  vm.runInNewContext(popupSource(await readFile('extension/popup.js','utf8')),{t,localizeDocument:()=>{},
     Date:{now:()=>now},document:{getElementById:element},window:{addEventListener(){}},setInterval:fn=>{refresh=fn;},clearInterval(){},
     chrome:{tabs:{query:async()=>[{id:7,url:'https://www.figma.com/design/test/name'}]},storage:{onChanged:{addListener(){},removeListener(){}},local:{get:async()=>({})}},
     runtime:{sendMessage:async msg=>{sent.push(msg.action);return msg.action==='status'?state:{cache:{bytes:1048576}};}}}});

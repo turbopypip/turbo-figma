@@ -1,3 +1,4 @@
+import { t } from './i18n.js';
 import { createCaptureSender, TRANSFER_PART_BYTES } from './network-transfer.js';
 
 // Limits include the record currently being written, not only waiting records.
@@ -6,11 +7,11 @@ export const CAPTURE_LIMITS = Object.freeze({ payloadChars: 8 * 1024 * 1024, que
 const validId = value => typeof value === 'string' && value.length > 0 && value.length <= 256;
 export function createNetworkCollector(chrome, { createSender = createCaptureSender, timers = globalThis, initialTimeout = 120000 } = {}) {
   let current;
-  let status = { state: 'idle', message: 'Сетевой захват выключен.', complete: false, events: 0, bytes: 0 };
+  let status = { state: 'idle', message: t('capture_idle'), complete: false, events: 0, bytes: 0 };
   const publish = (ctx, state, message) => {
     if (current === ctx) status = { state, message, complete: state === 'ready', events: ctx.events, bytes: ctx.bytes };
   };
-  function stop(reason = 'Захват остановлен. Начальный снимок не подтверждён.', error = false) {
+  function stop(reason = t('capture_stopped'), error = false) {
     const ctx = current;
     if (!ctx) return Promise.resolve();
     if (ctx.closing) return ctx.closing;
@@ -26,7 +27,7 @@ export function createNetworkCollector(chrome, { createSender = createCaptureSen
       let detached = false;
       if (ctx.attached) {
         try { await chrome.debugger.detach({ tabId: ctx.tabId }); detached = true; }
-        catch { ctx.detachFailed = true; publish(ctx, 'error', 'Не удалось снять debugger. Отключи отладку в панели Chrome или закрой вкладку.'); }
+        catch { ctx.detachFailed = true; publish(ctx, 'error', t('detach_failed')); }
       }
       if (!ctx.attached || detached) {
         publish(ctx, ctx.sealed ? 'stale' : error ? 'error' : 'stopped', reason);
@@ -39,10 +40,10 @@ export function createNetworkCollector(chrome, { createSender = createCaptureSen
   }
   const fail = (ctx, reason) => { if (current === ctx && !ctx.closed) void stop(reason, true); };
   async function cancellable(ctx, operation) {
-    if (ctx.abort.signal.aborted) throw new Error('Захват отменён.');
+    if (ctx.abort.signal.aborted) throw new Error(t('capture_cancelled'));
     let cancel;
     const cancelled = new Promise((_, reject) => {
-      cancel = () => reject(new Error('Захват отменён.'));
+      cancel = () => reject(new Error(t('capture_cancelled')));
       ctx.abort.signal.addEventListener('abort', cancel, { once: true });
     });
     try { return await Promise.race([operation, cancelled]); }
@@ -68,7 +69,7 @@ export function createNetworkCollector(chrome, { createSender = createCaptureSen
   async function complete(ctx, parts) {
     ctx.sealed = true;
     const joined = ctx.queue.shift(); ctx.queuedBytes -= joined.length;
-    publish(ctx, 'finishing', 'Начальная загрузка получена. Сохраняю снимок…');
+    publish(ctx, 'finishing', t('capture_finishing'));
     try {
       await ctx.sender.finish({ schemaReceived: true, joinStarted: true, joinEnded: true,
         receivedParts: parts, droppedParts: 0, sequenceComplete: true });
@@ -86,8 +87,8 @@ export function createNetworkCollector(chrome, { createSender = createCaptureSen
       }
       if (ctx.closed) return;
       ctx.ready = true;
-      publish(ctx, 'ready', 'Снимок сохранён; наблюдение включено. Поддержанные изменения применяются к подготовленному индексу; остальные требуют повторного захвата.');
-    } catch (error) { fail(ctx, `Не удалось завершить снимок: ${error.message}`); }
+      publish(ctx, 'ready', t('capture_ready_detail'));
+    } catch (error) { fail(ctx, t('finish_failed', [error.message])); }
   }
   async function drain(ctx) {
     if (ctx.draining || ctx.closed) return;
@@ -96,12 +97,12 @@ export function createNetworkCollector(chrome, { createSender = createCaptureSen
       while (!ctx.closed && ctx.queue.length) {
         const record = ctx.queue[0];
         if (ctx.ready) {
-          publish(ctx, 'updating', 'Проверяю сетевое обновление…');
+          publish(ctx, 'updating', t('capture_updating'));
           await ctx.sender.delta(record);
           if (ctx.closed) return;
           ctx.queue.shift(); ctx.queuedBytes -= record.length;
           ctx.events++; ctx.bytes += record.length;
-          if (!ctx.queue.length) publish(ctx, 'ready', 'Снимок сохранён; наблюдение включено.');
+          if (!ctx.queue.length) publish(ctx, 'ready', t('capture_ready'));
           continue;
         }
         for (let offset = 0; offset < record.length && !ctx.closed; offset += TRANSFER_PART_BYTES) {
@@ -117,18 +118,18 @@ export function createNetworkCollector(chrome, { createSender = createCaptureSen
         if (ctx.closed) return;
         ctx.queue.shift(); ctx.queuedBytes -= record.length;
         ctx.events++; ctx.bytes += record.length;
-        publish(ctx, 'capturing', 'Загружаю макет…');
+        publish(ctx, 'capturing', t('design_loading'));
       }
-    } catch (error) { fail(ctx, `Передача захвата остановлена: ${error.message}`); }
+    } catch (error) { fail(ctx, t('transfer_stopped', [error.message])); }
     finally { ctx.draining = false; }
   }
   function received(ctx, source, p, sent = false) {
     const payload = p.response?.payloadData, opcode = p.response?.opcode;
-    if (ctx.sealed && ctx.queue.length >= 4) { fail(ctx, 'Переполнение очереди live-пакетов; требуется повторный захват.'); return; }
+    if (ctx.sealed && ctx.queue.length >= 4) { fail(ctx, t('live_overflow')); return; }
     if (opcode === 9 || opcode === 10) return;
-    if (opcode !== 1 && opcode !== 2) { fail(ctx, 'Неподдерживаемая фрагментация multiplayer; снимок неполон.'); return; }
+    if (opcode !== 1 && opcode !== 2) { fail(ctx, t('fragmentation')); return; }
     if (typeof payload !== 'string' || payload.length > CAPTURE_LIMITS.payloadChars) {
-      fail(ctx, 'Сетевое сообщение превышает лимит или повреждено; захват неполон.'); return;
+      fail(ctx, t('message_limit')); return;
     }
     // NDJSON records may cross part boundaries. No URLs, headers, HTTP or outgoing data.
     // Upper bound avoids allocating a JSON escape expansion beyond the queue budget.
@@ -136,12 +137,12 @@ export function createNetworkCollector(chrome, { createSender = createCaptureSen
     for (let i = 0; i < payload.length; i++) {
       const code = payload.charCodeAt(i);
       estimate += code < 32 ? 6 : code === 34 || code === 92 ? 2 : code < 128 ? 1 : code < 2048 ? 2 : 3;
-      if (estimate + ctx.queuedBytes > CAPTURE_LIMITS.queueBytes) { fail(ctx, 'Переполнение очереди захвата; снимок неполон.'); return; }
+      if (estimate + ctx.queuedBytes > CAPTURE_LIMITS.queueBytes) { fail(ctx, t('capture_overflow')); return; }
     }
-    if (ctx.queue.length >= CAPTURE_LIMITS.records) { fail(ctx, 'Переполнение очереди захвата; снимок неполон.'); return; }
+    if (ctx.queue.length >= CAPTURE_LIMITS.records) { fail(ctx, t('capture_overflow')); return; }
     const record = new TextEncoder().encode(JSON.stringify({ version: 1, kind: sent ? 'ws-sent' : 'ws-received',
       session: source.sessionId || 'main', requestId: p.requestId, eventSequence: ctx.recordSequence++, opcode, payload }) + '\n');
-    if (record.length + ctx.queuedBytes > CAPTURE_LIMITS.queueBytes) { fail(ctx, 'Переполнение очереди захвата; снимок неполон.'); return; }
+    if (record.length + ctx.queuedBytes > CAPTURE_LIMITS.queueBytes) { fail(ctx, t('capture_overflow')); return; }
     ctx.queue.push(record); ctx.queuedBytes += record.length;
     void drain(ctx);
   }
@@ -150,18 +151,18 @@ export function createNetworkCollector(chrome, { createSender = createCaptureSen
     if (!ctx || ctx.closed || !ctx.attached || source.tabId !== ctx.tabId || (source.sessionId && !ctx.sessions.has(source.sessionId))) return;
     if (method === 'Page.frameNavigated' && !source.sessionId && !p.frame?.parentId) {
       if (ctx.expectedNavigation && !ctx.ready && !ctx.sockets.size) ctx.expectedNavigation = false;
-      else fail(ctx, 'Документ вкладки сменился. Нажми «Подключить» заново.');
+      else fail(ctx, t('document_changed'));
       return;
     }
     if (method === 'Target.attachedToTarget') {
       if (!['worker', 'iframe'].includes(p.targetInfo?.type) || !validId(p.sessionId)) {
-        fail(ctx, 'Неподдерживаемая дочерняя debugger-сессия; захват остановлен.'); return;
+        fail(ctx, t('child_session_unsupported')); return;
       }
       if (ctx.sessions.has(p.sessionId)) return;
-      if (ctx.sessions.size >= CAPTURE_LIMITS.sessions) { fail(ctx, 'Превышен лимит дочерних сессий.'); return; }
+      if (ctx.sessions.size >= CAPTURE_LIMITS.sessions) { fail(ctx, t('session_limit')); return; }
       ctx.sessions.add(p.sessionId);
       const task = enable(ctx, { tabId: ctx.tabId, sessionId: p.sessionId })
-        .catch(() => { if (ctx.sessions.has(p.sessionId)) fail(ctx, 'Не удалось включить захват worker/iframe.'); })
+        .catch(() => { if (ctx.sessions.has(p.sessionId)) fail(ctx, t('worker_capture_failed')); })
         .finally(() => ctx.setup.delete(task));
       ctx.setup.add(task);
       return;
@@ -169,7 +170,7 @@ export function createNetworkCollector(chrome, { createSender = createCaptureSen
     if (method === 'Target.detachedFromTarget' && ctx.sessions.has(p.sessionId)) {
       const ownedStream = [...ctx.sockets].some(key => JSON.parse(key)[0] === p.sessionId);
       ctx.sessions.delete(p.sessionId);
-      if (ownedStream) fail(ctx, 'Дочерняя сессия отключена; захват неполон.');
+      if (ownedStream) fail(ctx, t('child_disconnected'));
       return;
     }
     if (!ctx.accepting) return;
@@ -179,19 +180,19 @@ export function createNetworkCollector(chrome, { createSender = createCaptureSen
       let url;
       try { url = new URL(p.url); } catch { return; }
       if (url.origin !== 'wss://www.figma.com' || url.pathname !== `/api/multiplayer/${ctx.fileKey}`) return;
-      if (ctx.sockets.size >= CAPTURE_LIMITS.sockets) { fail(ctx, 'Превышен лимит multiplayer-соединений.'); return; }
-      if (ctx.sealed) { fail(ctx, 'Снимок устарел: multiplayer переподключён. Нажми «Подключить» для нового захвата.'); return; }
+      if (ctx.sockets.size >= CAPTURE_LIMITS.sockets) { fail(ctx, t('socket_limit')); return; }
+      if (ctx.sealed) { fail(ctx, t('multiplayer_reconnected')); return; }
       ctx.sockets.add(key);
     } else if (ctx.sockets.has(key)) {
       if (ctx.sealed && ['Network.webSocketFrameReceived', 'Network.webSocketFrameSent'].includes(method) && ![9, 10].includes(p.response?.opcode)) {
         if (p.response?.opcode !== 2 || typeof p.response.payloadData !== 'string' || p.response.payloadData.length > 192 * 1024) {
-          fail(ctx, 'Снимок устарел: неподдержанный live-пакет. Нажми «Подключить» для нового захвата.'); return;
+          fail(ctx, t('unsupported_live')); return;
         }
         received(ctx, source, p, method === 'Network.webSocketFrameSent');
         return;
       }
       if (method === 'Network.webSocketFrameReceived') received(ctx, source, p);
-      else if (method === 'Network.webSocketClosed' || method === 'Network.webSocketFrameError') fail(ctx, 'Поток multiplayer прерван; захват неполон.');
+      else if (method === 'Network.webSocketClosed' || method === 'Network.webSocketFrameError') fail(ctx, t('multiplayer_interrupted'));
     }
   }
   chrome.debugger.onEvent.addListener(onEvent);
@@ -200,7 +201,7 @@ export function createNetworkCollector(chrome, { createSender = createCaptureSen
     if (ctx && source.tabId === ctx.tabId && !source.sessionId) {
       ctx.attached = false;
       if (ctx.closed) { if (ctx.detachFailed && current === ctx) current = undefined; return; }
-      fail(ctx, 'Debugger отключён. Захват неполон; подключись и запусти его заново.');
+      fail(ctx, t('debugger_detached'));
     }
   });
   return {
@@ -214,34 +215,34 @@ export function createNetworkCollector(chrome, { createSender = createCaptureSen
       return change.status === 'loading' || change.status === 'complete';
     },
     async start({ tabId, fileKey, socket, reload = false }) {
-      if (current) throw new Error('Предыдущий захват ещё не остановлен.');
+      if (current) throw new Error(t('previous_capture'));
       const ctx = { tabId, fileKey, socket, reload, abort: new AbortController(), accepting: !reload, recordSequence: 0, closed: false, attached: false, queue: [], queuedBytes: 0,
         setup: new Set(), sessions: new Set(), sockets: new Set(), events: 0, bytes: 0, draining: false };
       current = ctx;
-      publish(ctx, 'starting', 'Подключаю debugger к выбранной вкладке…');
+      publish(ctx, 'starting', t('debugger_attaching'));
       ctx.sender = createSender(socket, { fileKey, sessionId: crypto.randomUUID(), generation: 1 }, { format: 'ndjson-v1' });
-      ctx.disconnected = () => fail(ctx, 'Связь с MCP прервана; захват неполон.');
+      ctx.disconnected = () => fail(ctx, t('capture_connection_lost'));
       socket.addEventListener('close', ctx.disconnected);
-      ctx.timer = timers.setTimeout(() => fail(ctx, 'Таймаут загрузки макета. Нажми «Подключить» заново.'), initialTimeout);
+      ctx.timer = timers.setTimeout(() => fail(ctx, t('capture_timeout')), initialTimeout);
       try {
         await ctx.sender.begin();
-        if (ctx.closed) throw new Error('Захват отменён.');
+        if (ctx.closed) throw new Error(t('capture_cancelled'));
         ctx.attach = chrome.debugger.attach({ tabId }, '1.3').then(() => { ctx.attached = true; });
         await cancellable(ctx, ctx.attach);
-        if (ctx.closed) throw new Error('Захват отменён.');
+        if (ctx.closed) throw new Error(t('capture_cancelled'));
         await cancellable(ctx, enable(ctx, { tabId }));
-        if (ctx.closed) throw new Error('Захват отменён.');
+        if (ctx.closed) throw new Error(t('capture_cancelled'));
         if (reload) {
           while (ctx.setup.size && !ctx.closed) await cancellable(ctx, Promise.all([...ctx.setup]));
-          if (ctx.closed) throw new Error('Захват отменён.');
+          if (ctx.closed) throw new Error(t('capture_cancelled'));
           ctx.reloadPending = true; ctx.expectedNavigation = true; ctx.accepting = true;
-          publish(ctx, 'capturing', 'Перезагружаю Figma для получения полного начального снимка…');
+          publish(ctx, 'capturing', t('capture_reload'));
           await cancellable(ctx, chrome.tabs.reload(tabId));
-          if (ctx.closed) throw new Error('Захват отменён.');
+          if (ctx.closed) throw new Error(t('capture_cancelled'));
         }
-        publish(ctx, 'capturing', 'Загружаю макет…');
+        publish(ctx, 'capturing', t('design_loading'));
       } catch (error) {
-        if (current === ctx && !ctx.closed) await stop(`Не удалось начать захват: ${error.message}`, true);
+        if (current === ctx && !ctx.closed) await stop(t('start_failed', [error.message]), true);
         throw error;
       }
     },

@@ -1,10 +1,11 @@
+import { t } from './i18n.js';
 const states = {
-  connected: { text: 'ON', color: '#167541', title: 'Подключено к MCP' },
-  busy: { text: 'RUN', color: '#2459a6', title: 'Выполняется запрос' },
-  connecting: { text: '…', color: '#a66b00', title: 'Подключение / ожидание восстановления связи' },
-  disconnected: { text: 'OFF', color: '#666666', title: 'Отключено — открой подключение значком на вкладке Figma' },
-  stale: { text: '!', color: '#b63030', title: 'Сетевой снимок устарел — открой состояние захвата' },
-  error: { text: '!', color: '#b63030', title: 'Подключение отклонено — проверь ключ или другое соединение' },
+  connected: { text: 'ON', color: '#167541', title: 'badge_connected' },
+  busy: { text: 'RUN', color: '#2459a6', title: 'badge_busy' },
+  connecting: { text: '…', color: '#a66b00', title: 'badge_connecting' },
+  disconnected: { text: 'OFF', color: '#666666', title: 'badge_disconnected' },
+  stale: { text: '!', color: '#b63030', title: 'badge_stale' },
+  error: { text: '!', color: '#b63030', title: 'badge_error' },
 };
 
 export function createStatusBadge(chrome) {
@@ -15,7 +16,7 @@ export function createStatusBadge(chrome) {
     work = work.catch(() => {}).then(async () => {
       await chrome.action.setBadgeBackgroundColor({ color: value.color });
       await chrome.action.setBadgeText({ text: value.text });
-      await chrome.action.setTitle({ title: `turbo-figma: ${value.title}` });
+      await chrome.action.setTitle({ title: `turbo-figma: ${t(value.title)}` });
     });
     work.catch(() => {});
     return work;

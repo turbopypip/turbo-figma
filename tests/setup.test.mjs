@@ -20,8 +20,9 @@ test('setup generates a direct Rust command, preserves pairing and fails without
  const configFile=path.join(root,'.local/config.json'),kiloFile=path.join(root,'.local/kilo.json');
  const before=JSON.parse(await readFile(configFile,'utf8'));
  const config=JSON.parse(await readFile(kiloFile,'utf8'));
- assert.deepEqual(config.mcp['turbo-figma'].command,[binary,'--server',configFile,root+path.sep]);
- assert.equal(config.mcp['turbo-figma'].environment,undefined);
+ assert.deepEqual(Object.keys(config.mcp),['turbo_figma']);
+ assert.deepEqual(config.mcp['turbo_figma'].command,[binary,'--server',configFile,root+path.sep]);
+ assert.equal(config.mcp['turbo_figma'].environment,undefined);
  result=run();assert.equal(result.status,0,result.stderr);
  assert.equal(JSON.parse(await readFile(configFile,'utf8')).secret,before.secret);
  await rm(binary);result=run();assert.notEqual(result.status,0);assert.deepEqual(JSON.parse(await readFile(kiloFile,'utf8')),config);

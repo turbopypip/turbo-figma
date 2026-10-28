@@ -1,0 +1,311 @@
+{
+  "checking_connection": {
+    "message": "Проверяю соединение…"
+  },
+  "mcp_port": {
+    "message": "Порт MCP"
+  },
+  "secret_saved": {
+    "message": "Секрет сохранён"
+  },
+  "change_secret": {
+    "message": "Ввести новый секрет"
+  },
+  "secret": {
+    "message": "Секрет"
+  },
+  "secret_placeholder": {
+    "message": "Вставь секрет подключения"
+  },
+  "connect": {
+    "message": "Подключить"
+  },
+  "disconnect": {
+    "message": "Отключить"
+  },
+  "network_capture": {
+    "message": "Сетевой захват"
+  },
+  "capture_idle": {
+    "message": "Сетевой захват выключен."
+  },
+  "design_cache": {
+    "message": "Кэш макетов"
+  },
+  "cache_connect": {
+    "message": "Кеш: подключись к MCP, чтобы узнать размер."
+  },
+  "clear_cache": {
+    "message": "Очистить кеш"
+  },
+  "information": {
+    "message": "Информация ↗"
+  },
+  "forget_key": {
+    "message": "Забыть ключ"
+  },
+  "cache_clearing": {
+    "message": "Очищаю кэш…"
+  },
+  "cache_error": {
+    "message": "Не удалось получить данные кеша. Проверь соединение с MCP."
+  },
+  "disconnected": {
+    "message": "Отключено"
+  },
+  "cache_loading": {
+    "message": "Кеш: размер появится после загрузки макета."
+  },
+  "other_design": {
+    "message": "Подключён другой макет. «Подключить» переключит мост на текущий."
+  },
+  "extension_updated": {
+    "message": "Расширение обновилось. Закрой это окно и открой значок снова."
+  },
+  "done": {
+    "message": "Готово"
+  },
+  "action_retry": {
+    "message": "Не удалось выполнить действие. Открой значок расширения ещё раз."
+  },
+  "current_tab": {
+    "message": "Подключение к текущей вкладке Figma"
+  },
+  "open_design": {
+    "message": "Для нового подключения открой макет Figma и нажми значок расширения."
+  },
+  "settings_read_error": {
+    "message": "Не удалось прочитать настройки подключения."
+  },
+  "capture_unavailable": {
+    "message": "Сетевой захват недоступен."
+  },
+  "capture_status_error": {
+    "message": "Не удалось получить состояние макета."
+  },
+  "badge_connected": {
+    "message": "Подключено к MCP"
+  },
+  "badge_busy": {
+    "message": "Выполняется запрос"
+  },
+  "badge_connecting": {
+    "message": "Подключение / ожидание восстановления связи"
+  },
+  "badge_disconnected": {
+    "message": "Отключено — открой подключение значком на вкладке Figma"
+  },
+  "badge_stale": {
+    "message": "Сетевой снимок устарел — открой состояние захвата"
+  },
+  "badge_error": {
+    "message": "Подключение отклонено — проверь ключ или другое соединение"
+  },
+  "action_failed": {
+    "message": "Не удалось выполнить действие."
+  },
+  "capture_stopped": {
+    "message": "Захват остановлен. Начальный снимок не подтверждён."
+  },
+  "detach_failed": {
+    "message": "Не удалось снять debugger. Отключи отладку в панели Chrome или закрой вкладку."
+  },
+  "capture_cancelled": {
+    "message": "Захват отменён."
+  },
+  "capture_finishing": {
+    "message": "Начальная загрузка получена. Сохраняю снимок…"
+  },
+  "capture_ready_detail": {
+    "message": "Снимок сохранён; наблюдение включено. Поддержанные изменения применяются к подготовленному индексу; остальные требуют повторного захвата."
+  },
+  "capture_updating": {
+    "message": "Проверяю сетевое обновление…"
+  },
+  "capture_ready": {
+    "message": "Снимок сохранён; наблюдение включено."
+  },
+  "design_loading": {
+    "message": "Загружаю макет…"
+  },
+  "live_overflow": {
+    "message": "Переполнение очереди live-пакетов; требуется повторный захват."
+  },
+  "fragmentation": {
+    "message": "Неподдерживаемая фрагментация multiplayer; снимок неполон."
+  },
+  "message_limit": {
+    "message": "Сетевое сообщение превышает лимит или повреждено; захват неполон."
+  },
+  "capture_overflow": {
+    "message": "Переполнение очереди захвата; снимок неполон."
+  },
+  "document_changed": {
+    "message": "Документ вкладки сменился. Нажми «Подключить» заново."
+  },
+  "child_session_unsupported": {
+    "message": "Неподдерживаемая дочерняя debugger-сессия; захват остановлен."
+  },
+  "session_limit": {
+    "message": "Превышен лимит дочерних сессий."
+  },
+  "worker_capture_failed": {
+    "message": "Не удалось включить захват worker/iframe."
+  },
+  "child_disconnected": {
+    "message": "Дочерняя сессия отключена; захват неполон."
+  },
+  "socket_limit": {
+    "message": "Превышен лимит multiplayer-соединений."
+  },
+  "multiplayer_reconnected": {
+    "message": "Снимок устарел: multiplayer переподключён. Нажми «Подключить» для нового захвата."
+  },
+  "unsupported_live": {
+    "message": "Снимок устарел: неподдержанный live-пакет. Нажми «Подключить» для нового захвата."
+  },
+  "multiplayer_interrupted": {
+    "message": "Поток multiplayer прерван; захват неполон."
+  },
+  "debugger_detached": {
+    "message": "Debugger отключён. Захват неполон; подключись и запусти его заново."
+  },
+  "previous_capture": {
+    "message": "Предыдущий захват ещё не остановлен."
+  },
+  "debugger_attaching": {
+    "message": "Подключаю debugger к выбранной вкладке…"
+  },
+  "capture_connection_lost": {
+    "message": "Связь с MCP прервана; захват неполон."
+  },
+  "capture_timeout": {
+    "message": "Таймаут загрузки макета. Нажми «Подключить» заново."
+  },
+  "capture_reload": {
+    "message": "Перезагружаю Figma для получения полного начального снимка…"
+  },
+  "capture_requirements": {
+    "message": "Для захвата требуется разрешение debugger и Chrome 125+."
+  },
+  "mcp_busy": {
+    "message": "Выполняется запрос MCP…"
+  },
+  "recapture_required": {
+    "message": "Мост подключён. Для чтения актуального макета нажми «Подключить». Прежнее чтение нужно начать заново."
+  },
+  "settings_save_error": {
+    "message": "Не удалось сохранить настройки подключения. Проверь расширение."
+  },
+  "cache_busy": {
+    "message": "Кэш занят: дождись завершения запроса."
+  },
+  "cache_requires_connection": {
+    "message": "Для управления кэшем подключи расширение к MCP."
+  },
+  "cache_timeout": {
+    "message": "Нет ответа от MCP. Результат очистки неизвестен; обнови сведения о кэше."
+  },
+  "command_failed": {
+    "message": "Не удалось отправить команду MCP."
+  },
+  "cache_closed": {
+    "message": "Соединение закрыто. Результат операции с кэшем неизвестен."
+  },
+  "reconnecting": {
+    "message": "Связь прервана. Жду MCP и подключусь автоматически…"
+  },
+  "connecting": {
+    "message": "Подключение…"
+  },
+  "cache_connection_lost": {
+    "message": "Связь с MCP прервана. Результат операции с кэшем неизвестен."
+  },
+  "capture_ended": {
+    "message": "Сетевой захват завершён. Проверь его состояние и нажми «Подключить» для повтора."
+  },
+  "connection_rejected": {
+    "message": "Подключение отклонено: проверь ключ или отключи другое расширение. Нажми «Подключить» для повтора."
+  },
+  "connected": {
+    "message": "Подключено к turbo-figma MCP."
+  },
+  "read_requirements": {
+    "message": "Для чтения макета требуется разрешение debugger и Chrome 125+."
+  },
+  "figma_changed": {
+    "message": "Вкладка Figma изменилась. Подключись заново."
+  },
+  "restore_failed": {
+    "message": "Не удалось восстановить подключение. Подключись заново."
+  },
+  "wait_action": {
+    "message": "Дождись завершения предыдущего действия."
+  },
+  "debugger_requirements": {
+    "message": "Требуется разрешение debugger и Chrome 125+."
+  },
+  "connect_idle": {
+    "message": "Подключи свободный мост к MCP."
+  },
+  "connect_current": {
+    "message": "Сначала подключи мост к текущей вкладке Figma."
+  },
+  "target_changed": {
+    "message": "Вкладка или соединение изменились."
+  },
+  "cache_cleared": {
+    "message": "Кэш очищен."
+  },
+  "cache_received": {
+    "message": "Размер кэша получен."
+  },
+  "wait_request": {
+    "message": "Дождись завершения текущего запроса."
+  },
+  "check_credentials": {
+    "message": "Открой макет Figma и проверь порт и секрет."
+  },
+  "key_forgotten": {
+    "message": "Ключ удалён."
+  },
+  "disconnected_saved": {
+    "message": "Отключено. Ключ сохранён."
+  },
+  "unknown_action": {
+    "message": "Неизвестное действие."
+  },
+  "figma_closed": {
+    "message": "Вкладка Figma закрыта или открыла другой файл."
+  },
+  "tab_reloading": {
+    "message": "Вкладка перезагружается; прежний захват неполон."
+  },
+  "size_mib": {
+    "message": "$1 МиБ"
+  },
+  "cache_size": {
+    "message": "Кеш: $1."
+  },
+  "cache_protected": {
+    "message": "Посторонних или непроверенных записей: $1; они сохранены и не включены в размер."
+  },
+  "finish_failed": {
+    "message": "Не удалось завершить снимок: $1"
+  },
+  "transfer_stopped": {
+    "message": "Передача захвата остановлена: $1"
+  },
+  "start_failed": {
+    "message": "Не удалось начать захват: $1"
+  },
+  "click_connect": {
+    "message": "$1 Нажми «Подключить»."
+  },
+  "prepare_failed": {
+    "message": "Не удалось подготовить макет: $1 Нажми «Подключить» для повтора."
+  },
+  "extension_description": {
+    "message": "Подключение выбранной вкладки Figma к локальному MCP-серверу turbo-figma."
+  }
+}

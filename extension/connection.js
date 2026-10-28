@@ -1,3 +1,4 @@
+import { t } from './i18n.js';
 import { createNetworkCollector } from './network-collector.js';
 import { figmaAction } from './dom.js';
 import { parseSelectionLink } from './link.js';
@@ -8,18 +9,18 @@ export function createConnection(chrome, { WebSocket = globalThis.WebSocket, tim
   let tabId, fileKey, socket, heartbeat, busy = false;
   let cacheRequest, captureConnection, captureOnReady = false;
   const collector = chrome.debugger ? createCollector(chrome) : undefined;
-  let currentState = 'disconnected', message = 'Отключено';
+  let currentState = 'disconnected', message = t('disconnected');
   const connectionState = state => { currentState = state; onState(state); };
   const setStatus = text => { message = text; };
   const snapshot = () => {
-    const capture = collector?.status || { state: 'unavailable', message: 'Для захвата требуется разрешение debugger и Chrome 125+.' };
+    const capture = collector?.status || { state: 'unavailable', message: t('capture_requirements') };
     const connected = currentState === 'connected';
     const needsCapture = connected && ['idle', 'stopped', 'stale', 'error'].includes(capture.state);
     return { state: currentState,
-      message: currentState === 'busy' ? 'Выполняется запрос MCP…' : needsCapture
-        ? 'Мост подключён. Для чтения актуального макета нажми «Подключить». Прежнее чтение нужно начать заново.' : message,
+      message: currentState === 'busy' ? t('mcp_busy') : needsCapture
+        ? t('recapture_required') : message,
       tabId, fileKey, busy, readReady: connected && capture.state === 'ready',
-      capture: needsCapture ? { ...capture, message: `${capture.message} Нажми «Подключить».` } : capture };
+      capture: needsCapture ? { ...capture, message: t('click_connect', [capture.message]) } : capture };
   };
   const saveSession = () => persist(() => chrome.storage.session.set({ connection: { tabId, fileKey, wanted: !stopped } }));
   const targetFile = tab => /^https:\/\/www\.figma\.com\/(design|file)\/([^/?#]+)/.exec(tab?.url || '')?.[2];
@@ -68,7 +69,7 @@ export function createConnection(chrome, { WebSocket = globalThis.WebSocket, tim
   let storageWork = Promise.resolve();
   const persist = operation => {
     storageWork = storageWork.catch(() => {}).then(operation);
-    storageWork.catch(() => setStatus('Не удалось сохранить настройки подключения. Проверь расширение.'));
+    storageWork.catch(() => setStatus(t('settings_save_error')));
     return storageWork;
   };
   const validCredentials = value => value && Number.isInteger(value.port) && value.port >= 1024 && value.port <= 65535 &&
@@ -78,11 +79,11 @@ export function createConnection(chrome, { WebSocket = globalThis.WebSocket, tim
     cacheRequest?.finish(new Error(message));
   }
   function cacheControl(action) {
-    if (busy || cacheRequest) return Promise.reject(new Error('Кэш занят: дождись завершения запроса.'));
-    if (!socket || socket.readyState !== WebSocket.OPEN || currentState !== 'connected') return Promise.reject(new Error('Для управления кэшем подключи расширение к MCP.'));
+    if (busy || cacheRequest) return Promise.reject(new Error(t('cache_busy')));
+    if (!socket || socket.readyState !== WebSocket.OPEN || currentState !== 'connected') return Promise.reject(new Error(t('cache_requires_connection')));
     const connection = socket, id = crypto.randomUUID();
     return new Promise((resolve, reject) => {
-      const timer = timers.setTimeout(() => finish(new Error('Нет ответа от MCP. Результат очистки неизвестен; обнови сведения о кэше.')), 30000);
+      const timer = timers.setTimeout(() => finish(new Error(t('cache_timeout'))), 30000);
       const finish = (error, result) => {
         if (cacheRequest?.id !== id) return;
         timers.clearTimeout(timer); cacheRequest = undefined;
@@ -90,11 +91,11 @@ export function createConnection(chrome, { WebSocket = globalThis.WebSocket, tim
       };
       cacheRequest = { id, finish };
       try { connection.send(JSON.stringify({ type: 'cache-control', id, action })); }
-      catch { finish(new Error('Не удалось отправить команду MCP.')); }
+      catch { finish(new Error(t('command_failed'))); }
     });
   }
   async function stop() {
-    rejectCache('Соединение закрыто. Результат операции с кэшем неизвестен.');
+    rejectCache(t('cache_closed'));
     stopped = true;
     captureOnReady = false;
     timers.clearInterval(heartbeat);
@@ -111,22 +112,22 @@ export function createConnection(chrome, { WebSocket = globalThis.WebSocket, tim
     if (stopped) return;
     const delay = Math.min(1000 * 2 ** Math.min(attempt++, 5), 30000);
     connectionState('connecting');
-    setStatus('Связь прервана. Жду MCP и подключусь автоматически…');
+    setStatus(t('reconnecting'));
     retryTimer = timers.setTimeout(() => { if (busy) retry(); else connect(); }, delay);
   }
   function connect() {
     if (stopped || !validCredentials(credentials) || !fileKey) return;
     const connection = socket = new WebSocket(`ws://127.0.0.1:${credentials.port}`);
     connectionState('connecting');
-    setStatus('Подключение…');
+    setStatus(t('connecting'));
     connection.onopen = () => {
       if (connection === socket && !stopped) connection.send(JSON.stringify({ type: 'auth', secret: credentials.secret, fileKey }));
     };
     connection.onerror = () => {}; // close schedules a single retry.
     connection.onclose = event => {
       if (connection !== socket || stopped) return;
-      void collector?.stop('Связь с MCP прервана; захват неполон.', true);
-      rejectCache('Связь с MCP прервана. Результат операции с кэшем неизвестен.');
+      void collector?.stop(t('capture_connection_lost'), true);
+      rejectCache(t('cache_connection_lost'));
       socket = undefined;
       timers.clearInterval(heartbeat);
       const captureEnded = captureConnection === connection;
@@ -136,8 +137,8 @@ export function createConnection(chrome, { WebSocket = globalThis.WebSocket, tim
         void saveSession().catch(() => {});
         void chrome.alarms.clear('bridge-reconnect');
         connectionState(captureEnded ? 'stale' : 'error');
-        setStatus(captureEnded ? 'Сетевой захват завершён. Проверь его состояние и нажми «Подключить» для повтора.'
-          : 'Подключение отклонено: проверь ключ или отключи другое расширение. Нажми «Подключить» для повтора.');
+        setStatus(captureEnded ? t('capture_ended')
+          : t('connection_rejected'));
         return;
       }
       retry();
@@ -157,18 +158,18 @@ export function createConnection(chrome, { WebSocket = globalThis.WebSocket, tim
         connectionState('connected');
         const saved = { ...credentials };
         void persist(() => chrome.storage.local.set({ pairing: saved })).catch(() => {});
-        setStatus('Подключено к turbo-figma MCP.');
+        setStatus(t('connected'));
         if (captureOnReady) {
           captureOnReady = false;
           try {
-            if (!collector) throw new Error('Для чтения макета требуется разрешение debugger и Chrome 125+.');
+            if (!collector) throw new Error(t('read_requirements'));
             const tab = await chrome.tabs.get(tabId);
             if (connection !== socket || stopped) return;
-            if (targetFile(tab) !== fileKey) throw new Error('Вкладка Figma изменилась. Подключись заново.');
+            if (targetFile(tab) !== fileKey) throw new Error(t('figma_changed'));
             captureConnection = connection;
             await collector.start({ tabId, fileKey, socket: connection, reload: true });
           } catch (error) {
-            if (connection === socket && !stopped) setStatus(`Не удалось подготовить макет: ${error.message} Нажми «Подключить» для повтора.`);
+            if (connection === socket && !stopped) setStatus(t('prepare_failed', [error.message]));
           }
         }
         return;
@@ -199,21 +200,21 @@ export function createConnection(chrome, { WebSocket = globalThis.WebSocket, tim
       connect();
     }
   }
-  const ready = restore().catch(() => { connectionState('error'); setStatus('Не удалось восстановить подключение. Подключись заново.'); });
+  const ready = restore().catch(() => { connectionState('error'); setStatus(t('restore_failed')); });
   let changing = false;
   async function control(input) {
     await ready;
     if (input.action === 'status') return snapshot();
-    if (changing) return { error: 'Дождись завершения предыдущего действия.' };
+    if (changing) return { error: t('wait_action') };
     changing = true;
     try {
       if (input.action === 'capture-start' || input.action === 'capture-reload') {
-        if (!collector) throw new Error('Требуется разрешение debugger и Chrome 125+.');
-        if (busy || cacheRequest || currentState !== 'connected' || !socket) throw new Error('Подключи свободный мост к MCP.');
-        if (input.tabId !== tabId) throw new Error('Сначала подключи мост к текущей вкладке Figma.');
+        if (!collector) throw new Error(t('debugger_requirements'));
+        if (busy || cacheRequest || currentState !== 'connected' || !socket) throw new Error(t('connect_idle'));
+        if (input.tabId !== tabId) throw new Error(t('connect_current'));
         const connection = socket;
         const tab = await chrome.tabs.get(tabId);
-        if (socket !== connection || targetFile(tab) !== fileKey) throw new Error('Вкладка или соединение изменились.');
+        if (socket !== connection || targetFile(tab) !== fileKey) throw new Error(t('target_changed'));
         captureConnection = connection;
         await collector.start({ tabId, fileKey, socket: connection, reload: input.action === 'capture-reload' });
         return snapshot();
@@ -221,14 +222,14 @@ export function createConnection(chrome, { WebSocket = globalThis.WebSocket, tim
       if (input.action === 'capture-stop') { await collector?.stop(); return snapshot(); }
       if (input.action === 'cache-info' || input.action === 'cache-clear') {
         const cache = await cacheControl(input.action);
-        return { cache, message: input.action === 'cache-clear' ? 'Кэш очищен.' : 'Размер кэша получен.' };
+        return { cache, message: input.action === 'cache-clear' ? t('cache_cleared') : t('cache_received') };
       }
       if (input.action === 'connect') {
-        if (busy) throw new Error('Дождись завершения текущего запроса.');
+        if (busy) throw new Error(t('wait_request'));
         const tab = await chrome.tabs.get(input.tabId);
         const file = targetFile(tab);
         const candidate = { port: input.port, secret: input.secret || credentials?.secret };
-        if (!file || !validCredentials(candidate)) throw new Error('Открой макет Figma и проверь порт и секрет.');
+        if (!file || !validCredentials(candidate)) throw new Error(t('check_credentials'));
         await stop();
         tabId = tab.id; fileKey = file; credentials = candidate; attempt = 0; stopped = false; captureOnReady = true;
         await saveSession();
@@ -237,8 +238,8 @@ export function createConnection(chrome, { WebSocket = globalThis.WebSocket, tim
       } else if (input.action === 'disconnect' || input.action === 'forget') {
         await stop(); await saveSession();
         if (input.action === 'forget') { credentials = undefined; await persist(() => chrome.storage.local.remove('pairing')); }
-        setStatus(input.action === 'forget' ? 'Ключ удалён.' : 'Отключено. Ключ сохранён.');
-      } else throw new Error('Неизвестное действие.');
+        setStatus(input.action === 'forget' ? t('key_forgotten') : t('disconnected_saved'));
+      } else throw new Error(t('unknown_action'));
       return snapshot();
     } catch (error) { return { error: error.message }; }
     finally { changing = false; }
@@ -252,9 +253,9 @@ export function createConnection(chrome, { WebSocket = globalThis.WebSocket, tim
     if (id !== tabId) return;
     if (change.status === 'complete') collector?.navigation(change);
     if (!tab || (change.url && targetFile(tab) !== fileKey)) {
-      await stop(); await saveSession(); setStatus('Вкладка Figma закрыта или открыла другой файл.');
+      await stop(); await saveSession(); setStatus(t('figma_closed'));
     } else if (change.status === 'loading') {
-      if (!collector?.navigation(change)) await collector?.stop('Вкладка перезагружается; прежний захват неполон.');
+      if (!collector?.navigation(change)) await collector?.stop(t('tab_reloading'));
       if (!busy) await saveSession();
     }
   }

@@ -1,0 +1,311 @@
+{
+  "checking_connection": {
+    "message": "Checking connection…"
+  },
+  "mcp_port": {
+    "message": "MCP port"
+  },
+  "secret_saved": {
+    "message": "Secret saved"
+  },
+  "change_secret": {
+    "message": "Enter a new secret"
+  },
+  "secret": {
+    "message": "Secret"
+  },
+  "secret_placeholder": {
+    "message": "Paste the connection secret"
+  },
+  "connect": {
+    "message": "Connect"
+  },
+  "disconnect": {
+    "message": "Disconnect"
+  },
+  "network_capture": {
+    "message": "Network capture"
+  },
+  "capture_idle": {
+    "message": "Network capture is off."
+  },
+  "design_cache": {
+    "message": "Design cache"
+  },
+  "cache_connect": {
+    "message": "Cache: connect to MCP to see its size."
+  },
+  "clear_cache": {
+    "message": "Clear cache"
+  },
+  "information": {
+    "message": "Information ↗"
+  },
+  "forget_key": {
+    "message": "Forget key"
+  },
+  "cache_clearing": {
+    "message": "Clearing cache…"
+  },
+  "cache_error": {
+    "message": "Could not retrieve cache information. Check the MCP connection."
+  },
+  "disconnected": {
+    "message": "Disconnected"
+  },
+  "cache_loading": {
+    "message": "Cache: size will appear after the design loads."
+  },
+  "other_design": {
+    "message": "Another design is connected. Click Connect to switch to the current one."
+  },
+  "extension_updated": {
+    "message": "The extension was updated. Close this popup and open it again."
+  },
+  "done": {
+    "message": "Done"
+  },
+  "action_retry": {
+    "message": "Could not complete the action. Open the extension popup again."
+  },
+  "current_tab": {
+    "message": "Connecting to the current Figma tab"
+  },
+  "open_design": {
+    "message": "To connect, open a Figma design and click the extension icon."
+  },
+  "settings_read_error": {
+    "message": "Could not read connection settings."
+  },
+  "capture_unavailable": {
+    "message": "Network capture is unavailable."
+  },
+  "capture_status_error": {
+    "message": "Could not retrieve the design status."
+  },
+  "badge_connected": {
+    "message": "Connected to MCP"
+  },
+  "badge_busy": {
+    "message": "Request in progress"
+  },
+  "badge_connecting": {
+    "message": "Connecting / waiting to reconnect"
+  },
+  "badge_disconnected": {
+    "message": "Disconnected — click the extension icon on a Figma tab to connect"
+  },
+  "badge_stale": {
+    "message": "Network snapshot is stale — open capture status"
+  },
+  "badge_error": {
+    "message": "Connection rejected — check the secret or another connection"
+  },
+  "action_failed": {
+    "message": "Could not complete the action."
+  },
+  "capture_stopped": {
+    "message": "Capture stopped. The initial snapshot was not confirmed."
+  },
+  "detach_failed": {
+    "message": "Could not detach the debugger. Stop debugging in Chrome or close the tab."
+  },
+  "capture_cancelled": {
+    "message": "Capture cancelled."
+  },
+  "capture_finishing": {
+    "message": "Initial load received. Saving snapshot…"
+  },
+  "capture_ready_detail": {
+    "message": "Snapshot saved; observation enabled. Supported changes update the prepared index; other changes require a new capture."
+  },
+  "capture_updating": {
+    "message": "Checking network update…"
+  },
+  "capture_ready": {
+    "message": "Snapshot saved; observation enabled."
+  },
+  "design_loading": {
+    "message": "Loading design…"
+  },
+  "live_overflow": {
+    "message": "Live packet queue overflow; capture again."
+  },
+  "fragmentation": {
+    "message": "Unsupported multiplayer fragmentation; snapshot is incomplete."
+  },
+  "message_limit": {
+    "message": "Network message exceeds the limit or is corrupt; capture is incomplete."
+  },
+  "capture_overflow": {
+    "message": "Capture queue overflow; snapshot is incomplete."
+  },
+  "document_changed": {
+    "message": "The tab document changed. Click Connect again."
+  },
+  "child_session_unsupported": {
+    "message": "Unsupported child debugger session; capture stopped."
+  },
+  "session_limit": {
+    "message": "Child session limit exceeded."
+  },
+  "worker_capture_failed": {
+    "message": "Could not enable worker/iframe capture."
+  },
+  "child_disconnected": {
+    "message": "Child session disconnected; capture is incomplete."
+  },
+  "socket_limit": {
+    "message": "Multiplayer connection limit exceeded."
+  },
+  "multiplayer_reconnected": {
+    "message": "Snapshot is stale: multiplayer reconnected. Click Connect to capture again."
+  },
+  "unsupported_live": {
+    "message": "Snapshot is stale: unsupported live packet. Click Connect to capture again."
+  },
+  "multiplayer_interrupted": {
+    "message": "Multiplayer stream interrupted; capture is incomplete."
+  },
+  "debugger_detached": {
+    "message": "Debugger detached. Capture is incomplete; reconnect and start it again."
+  },
+  "previous_capture": {
+    "message": "The previous capture has not stopped yet."
+  },
+  "debugger_attaching": {
+    "message": "Attaching the debugger to the selected tab…"
+  },
+  "capture_connection_lost": {
+    "message": "MCP connection lost; capture is incomplete."
+  },
+  "capture_timeout": {
+    "message": "Design loading timed out. Click Connect again."
+  },
+  "capture_reload": {
+    "message": "Reloading Figma to capture the complete initial snapshot…"
+  },
+  "capture_requirements": {
+    "message": "Capture requires the debugger permission and Chrome 125+."
+  },
+  "mcp_busy": {
+    "message": "MCP request in progress…"
+  },
+  "recapture_required": {
+    "message": "Bridge connected. Click Connect to read the current design. Start the previous read again."
+  },
+  "settings_save_error": {
+    "message": "Could not save connection settings. Check the extension."
+  },
+  "cache_busy": {
+    "message": "Cache is busy: wait for the request to finish."
+  },
+  "cache_requires_connection": {
+    "message": "Connect the extension to MCP to manage the cache."
+  },
+  "cache_timeout": {
+    "message": "No response from MCP. The clear operation result is unknown; refresh cache information."
+  },
+  "command_failed": {
+    "message": "Could not send the MCP command."
+  },
+  "cache_closed": {
+    "message": "Connection closed. The cache operation result is unknown."
+  },
+  "reconnecting": {
+    "message": "Connection lost. Waiting for MCP to reconnect automatically…"
+  },
+  "connecting": {
+    "message": "Connecting…"
+  },
+  "cache_connection_lost": {
+    "message": "MCP connection lost. The cache operation result is unknown."
+  },
+  "capture_ended": {
+    "message": "Network capture ended. Check its status and click Connect to retry."
+  },
+  "connection_rejected": {
+    "message": "Connection rejected: check the secret or disconnect another extension. Click Connect to retry."
+  },
+  "connected": {
+    "message": "Connected to turbo-figma MCP."
+  },
+  "read_requirements": {
+    "message": "Reading a design requires the debugger permission and Chrome 125+."
+  },
+  "figma_changed": {
+    "message": "The Figma tab changed. Connect again."
+  },
+  "restore_failed": {
+    "message": "Could not restore the connection. Connect again."
+  },
+  "wait_action": {
+    "message": "Wait for the previous action to finish."
+  },
+  "debugger_requirements": {
+    "message": "Requires the debugger permission and Chrome 125+."
+  },
+  "connect_idle": {
+    "message": "Connect an idle bridge to MCP."
+  },
+  "connect_current": {
+    "message": "Connect the bridge to the current Figma tab first."
+  },
+  "target_changed": {
+    "message": "The tab or connection changed."
+  },
+  "cache_cleared": {
+    "message": "Cache cleared."
+  },
+  "cache_received": {
+    "message": "Cache size received."
+  },
+  "wait_request": {
+    "message": "Wait for the current request to finish."
+  },
+  "check_credentials": {
+    "message": "Open a Figma design and check the port and secret."
+  },
+  "key_forgotten": {
+    "message": "Key removed."
+  },
+  "disconnected_saved": {
+    "message": "Disconnected. Secret saved."
+  },
+  "unknown_action": {
+    "message": "Unknown action."
+  },
+  "figma_closed": {
+    "message": "The Figma tab was closed or opened another file."
+  },
+  "tab_reloading": {
+    "message": "Tab is reloading; previous capture is incomplete."
+  },
+  "size_mib": {
+    "message": "$1 MiB"
+  },
+  "cache_size": {
+    "message": "Cache: $1."
+  },
+  "cache_protected": {
+    "message": "Unrelated or unverified entries: $1; preserved and excluded from the size."
+  },
+  "finish_failed": {
+    "message": "Could not finish the snapshot: $1"
+  },
+  "transfer_stopped": {
+    "message": "Capture transfer stopped: $1"
+  },
+  "start_failed": {
+    "message": "Could not start capture: $1"
+  },
+  "click_connect": {
+    "message": "$1 Click Connect."
+  },
+  "prepare_failed": {
+    "message": "Could not prepare the design: $1 Click Connect to retry."
+  },
+  "extension_description": {
+    "message": "Connect an explicitly selected Figma tab to a local turbo-figma MCP server."
+  }
+}

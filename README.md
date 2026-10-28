@@ -1,20 +1,54 @@
 # turbo-figma
 
-Расширение браузера и локальный MCP-сервер на Rust для работы AI-агента с макетами Figma. Подключается к открытой вкладке и передаёт агенту контекст дизайна, скриншоты и ассеты.
+**English** | [Русский](README.ru.md)
 
-## Возможности
+A browser extension and local Rust MCP server that lets an AI agent work with Figma designs. It connects to an open tab and provides design context, screenshots, and assets.
 
-- Чтение дерева слоёв, размеров, Auto Layout, стилей, текста и компонентов по ссылке на узел Figma.
-- Получение текущего выделения и изменений макета во время активного захвата.
-- Работа с переменными Figma и сопоставление значений с CSS-переменными UI-кита.
-- Скриншоты узлов в PNG и экспорт ассетов в PNG/SVG в выбранный каталог.
-- Проверка подключения и управление кэшем из панели расширения.
+## Features
 
-Для подключения к Kilo CLI используются инструменты `get_connection_status`, `get_selection`, `get_design_map`, `get_design_context`, `get_screenshot` и `export_assets`.
+- Read layer trees, dimensions, Auto Layout, styles, text, and components from a Figma node URL.
+- Retrieve the current selection and track design changes during active capture.
+- Work with Figma variables and map values to your UI kit's CSS variables.
+- Capture nodes as PNG screenshots and export PNG/SVG assets to a chosen directory.
+- Check the connection and manage the cache from the extension popup.
 
-## Установка
+The Kilo CLI integration exposes `get_connection_status`, `get_selection`, `get_design_map`, `get_design_context`, `get_screenshot`, and `export_assets`.
 
-Склонируй репозиторий:
+Kilo exposes tools with the `turbo_figma_` prefix, for example `turbo_figma_get_design_context`. When upgrading an existing configuration, rename the MCP entry from `turbo-figma` to `turbo_figma` and restart MCP in Kilo.
+
+## Installation
+
+### Release archives
+
+Download the archive for your system from [GitHub Releases](https://github.com/turbopypip/turbo-figma/releases). Archives become available after a maintainer publishes a release; if none is published yet, use the source build below.
+
+| System | Archive |
+| --- | --- |
+| Windows x64 | `turbo-figma-vX.Y.Z-windows-x64.zip` |
+| Linux x64 (Ubuntu 22.04 or compatible) | `turbo-figma-vX.Y.Z-linux-x64.tar.gz` |
+| macOS Apple Silicon (arm64) | `turbo-figma-vX.Y.Z-macos-arm64.tar.gz` |
+
+Each archive includes the compiled Rust server, browser extension (RU/EN), setup scripts, and documentation. Intel Macs and other architectures currently require a source build.
+
+1. Extract the archive to a permanent directory.
+2. Install Node.js 20.12+ for the setup script. Rust, a compiler, and `npm ci` are not needed.
+3. From the extracted directory, configure an absolute asset path:
+
+   ```sh
+   node scripts/setup.mjs --assets /absolute/path/to/project/public/figma
+   ```
+
+   On Windows, for example:
+
+   ```powershell
+   node scripts/setup.mjs --assets 'C:\Projects\site\public\figma'
+   ```
+
+4. Load the `extension/` directory as described below, then follow **Usage**.
+
+### Build from source
+
+Clone the repository:
 
 ```sh
 git clone https://github.com/turbopypip/turbo-figma.git
@@ -23,17 +57,17 @@ cd turbo-figma
 
 ### Windows 10/11 x64
 
-Запусти в PowerShell из каталога проекта:
+Run this in PowerShell from the project directory:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -Assets 'C:\Projects\site\public\figma'
 ```
 
-Укажи в `-Assets` каталог для экспортируемых изображений. Скрипт установит недостающие зависимости через winget, соберёт сервер и подготовит конфигурацию. Если Node.js, Rust и MSVC уже установлены, добавь `-SkipDependencies`.
+Set `-Assets` to the directory for exported images. The script installs missing dependencies through winget, builds the server, and prepares the configuration. Add `-SkipDependencies` if Node.js, Rust, and MSVC are already installed.
 
 ### macOS / Linux
 
-Нужны Node.js 20.12+, Rust/Cargo и C/C++ compiler. На macOS установи Xcode Command Line Tools командой `xcode-select --install`.
+Requires Node.js 20.12+, Rust/Cargo, and a C/C++ compiler. On macOS, install Xcode Command Line Tools with `xcode-select --install`.
 
 ```sh
 npm ci
@@ -41,77 +75,110 @@ npm run build
 npm run setup -- --assets /absolute/path/to/project/public/figma
 ```
 
-В `--assets` укажи абсолютный путь к каталогу для изображений. Готовый сервер находится в `target/release/turbo-figma` (`turbo-figma.exe` на Windows).
+Set `--assets` to an absolute image directory path. The compiled server is at `target/release/turbo-figma` (`turbo-figma.exe` on Windows).
 
-### Расширение браузера
+### Browser extension
 
-Нужен Chrome или совместимый Chromium-браузер версии 125+.
+Requires Chrome or a compatible Chromium browser, version 125+.
 
-1. Открой `chrome://extensions` и включи режим разработчика.
-2. Нажми «Загрузить распакованное расширение» и выбери каталог `extension/`.
-3. Закрепи значок **turbo-figma** на панели браузера.
+The extension uses Russian when the browser UI language is Russian, and English otherwise. Buttons, connection and capture statuses, and badge tooltips are localized. Reload the extension in `chrome://extensions` after updating.
 
-## Запуск
+Use the same `extension/` folder from the extracted release for every browser:
 
-1. Добавь запись из созданного `.local/kilo.json` в конфигурацию MCP клиента Kilo CLI. Пример — [examples/kilo.json](examples/kilo.json).
-2. Запусти MCP через Kilo и открой нужный макет Figma в браузере.
-3. Нажми значок **turbo-figma**, введи порт и секрет из `.local/pairing.txt`, затем нажми «Подключить». При следующих подключениях ключ вводить не нужно.
-4. Расширение автоматически перезагрузит подключённую вкладку Figma и загрузит макет. Дождись готовности.
-   «Отключить» завершает соединение и захват. Размер кеша обновляется автоматически; «Очистить кеш» удаляет локальные снимки.
-5. Передай агенту ссылку на нужный узел Figma и опиши задачу.
-
-Например: «Прочитай дизайн этой секции, сделай скриншот и выгрузи нужные изображения для вёрстки».
-
-Скриншот или экспорт ассетов можно запускать параллельно с `get_design_map` и `get_design_context`: короткие чтения снимка ожидают своей очереди, а работа с браузером идёт независимо. Указывай `url` или ID узлов явно, поскольку экспорт меняет выделение. `get_connection_status` также доступен во время операций. `get_selection` может увидеть изменённое выделение или попросить повторить чтение.
-
-Одновременно выполняется только один `get_screenshot` или один пакет `export_assets`; второй запрос получает `busy`. Ассеты внутри пакета экспортируются последовательно. Очистку кэша, новый захват и переподключение выполняй после завершения запросов. Скриншот и сетевой снимок не гарантируют один и тот же момент состояния макета; изменения revision по-прежнему требуют повторного чтения.
-
-### Чтение дизайна агентом
-
-1. `get_design_map({url})` возвращает компактную карту ветки: ID, родителей, имена, типы, геометрию и `hasChildren`. Глубина по умолчанию — 2. Затем `get_screenshot({url})` даёт визуальный ориентир.
-2. `get_design_context({url, nodeIds, observation, revision})` читает выбранные секции пакетом до 20 ID. `url` остаётся ссылкой на исходный корень; `nodeIds` берутся из карты без изменения, включая пути внутри instances. Пересекающиеся секции возвращаются без повторов. `depth` отсчитывается от каждой выбранной секции.
-3. Для адресных деталей: `get_design_context({url, nodeIds, depth: 0, fields: ["text"], observation, revision})`. Группы `fields`: `layout`, `style`, `text`, `component`; по умолчанию возвращаются все. При адресном чтении контейнера `pendingDepth` сообщает о его непрочитанных потомках, даже когда сам узел получен полностью.
-
-`observation` берётся из ответа карты, `revision` — из `freshness.revision`. Если снимок или revision изменились, сервер возвращает STALE: нужно обновить карту. Скриншот снимается отдельно с живой вкладки и не является атомарной частью сетевого снимка.
-
-Все чтения ограничены `maxBytes` (по умолчанию 24 000 байт) и `maxNodes` (200). Следующие страницы запрашиваются с неизменными аргументами и `traversal.continuation`. Проверяй также `pendingDepth`, `missingNodeIds`, `propertiesOmitted` и unresolved-диагностику: конец пагинации не означает полноту всех данных. Поиск `nodeIds` ограничен исходной веткой, видимостью и глубиной сканирования 50; отсутствующие ID перечисляются явно. Для более глубокой карты повтори `get_design_map` с большей `depth` (до 12).
-
-Компактный ответ содержит единый CSS в `layout.css`. Если группа `layout` исключена, объединённый CSS доступен в `style.css`. Удалены повторные `properties`, `cssText`, копия CSS в `style` при наличии `layout` и одинаковые пояснения на каждом узле. `resolvedValues` содержит исходные значения только заменённых на переменные CSS-свойств. Общие правила находятся в `semantics`; индивидуальные причины ошибок, исходные стили, тексты, overrides и правила hug/fill сохраняются. Отсутствие группы, исключённой через `fields`, не означает отсутствие свойства в Figma.
-
-После обновления перезапусти MCP в клиенте, чтобы он перечитал список инструментов и инструкции.
-
-Чтобы подключить CSS-переменные UI-кита, добавь `variablesFile` с абсолютным путём к CSS-файлу в `.local/config.json` и перезапусти MCP. Файл должен содержать плоские блоки `:root` с custom properties.
-
-Скриншоты и экспорт выполняются в фоне через нативный Export Figma: вкладка и окно не активируются, буфер обмена не используется. Пока включён сетевой захват, расширение поддерживает активность Figma через debugger, чтобы можно было переключаться между вкладками. Экспорт сохраняет этот режим; остановка захвата снимает его вместе с debugger. При экспорте без захвата режим включается только на время операции. После разрыва захвата нажми «Подключить» заново. Секрет подключения хранится локально; не передавай его агенту.
-
-### Статусы расширения
-
-Значок на панели браузера показывает состояние соединения. Нажми на него, чтобы увидеть подробное сообщение.
-
-| Значок | Что означает | Что делать |
-| --- | --- | --- |
-| **ON**, зелёный | Расширение подключено к MCP. | Проверь готовность сетевого захвата в панели, затем передавай задачу агенту. |
-| **RUN**, синий | Выполняется запрос агента. | Можно продолжать работу в другом окне; запрос не переключает фокус. |
-| **…**, жёлтый | Подключение или ожидание восстановления связи. | Подожди. Если статус сохраняется, проверь, запущен ли MCP в Kilo и совпадает ли порт. |
-| **OFF**, серый | Соединение отключено. | Открой нужную вкладку Figma, нажми значок расширения и «Подключить». |
-| **!**, красный — снимок устарел | Захват прерван, прежние данные больше не актуальны. | Нажми «Подключить»: вкладка перезагрузится и начнётся новый захват. |
-| **!**, красный — ошибка подключения | Подключение отклонено или не удалось восстановить его. | Прочитай сообщение в панели. Проверь порт и ключ, отключи другое подключение к этому MCP и повтори «Подключить». |
-
-**ON не означает, что макет уже прочитан.** В разделе «Сетевой захват» панели есть отдельный статус:
-
-| Сообщение | Что делать |
+| Browser | Open the extensions page |
 | --- | --- |
-| Захват выключен или остановлен | Открой нужную вкладку Figma и нажми «Подключить». |
-| Подключение захвата, запись или сохранение снимка | Дождись завершения загрузки макета. |
-| «Снимок сохранён; наблюдение включено» | Можно читать дизайн через агента. |
-| «Проверяю сетевое обновление…» | Подожди, пока изменения применятся. |
-| Снимок устарел, захват неполон или произошёл таймаут | Нажми «Подключить» заново. |
-| Захват недоступен или не удалось включить отладку | Проверь версию браузера и разрешение расширения на отладку (`debugger`). Следуй сообщению в панели. |
+| Google Chrome / Chromium | `chrome://extensions` |
+| Microsoft Edge | `edge://extensions` |
+| Brave | `brave://extensions` |
+| Opera / Opera GX | `opera://extensions` |
+| Vivaldi | Menu → Tools → Extensions |
 
-### Восстановление после разрыва связи
+1. Open the page for your browser and enable **Developer mode**.
+2. Click **Load unpacked** (or **Load unpacked extension**) and select `extension/`, the folder containing `manifest.json`. Do not select the archive or its top-level folder.
+3. Pin **turbo-figma** from the browser's Extensions menu, open a Figma design, and follow **Usage** below.
+4. Keep the extracted folder in place. After an update, click **Reload** on the extension's card on the same extensions page, then reconnect to Figma.
 
-Переподключение восстанавливает мост, но не актуальность прежнего снимка. После reconnect, перезапуска MCP или service worker нажми **«Подключить»** и дождись готовности. Расширение подсказывает это действие. Нажатие «Подключить» перезагружает вкладку и запускает захват; автоматическое восстановление связи само по себе вкладку не перезагружает. Чтение начни заново: continuation от прежнего наблюдения недействителен.
+Installation references: [Chrome](https://developer.chrome.com/docs/extensions/get-started/tutorial/hello-world), [Edge](https://learn.microsoft.com/en-us/microsoft-edge/extensions/getting-started/extension-sideloading), [Opera](https://help.opera.com/en/extensions/testing/), [Vivaldi](https://help.vivaldi.com/desktop/appearance-customization/extensions/). These are installation instructions, not a claim that every browser has been tested with Figma. Capture requires Chromium 125+ and the `debugger` API. This package does not support Firefox or Safari.
 
-`get_connection_status` отдельно возвращает `readReady` (готовность начать чтение), `snapshotState` (`capture_required`, `capturing`, `ready`) и `nextAction` (`connect`, `wait`, `reload_and_capture`, `read`). Готовность относится к снимку подключённого файла и не гарантирует наличие selection или возможность экспорта. Статус отражает момент проверки.
+## Usage
 
-Векторные потомки и отдельные текстовые символы в подробном контексте возвращаются кратко: ID, геометрия, CSS и исходный текст, с отметкой `detailsOmitted`. Полные свойства доступны через `nodeIds: [id]`, `depth: 0`. Скриншот и экспорт раскрывают предков целевого узла сверху вниз по сетевому снимку; нужная страница должна быть открыта в Figma.
+1. Merge the generated `.local/kilo.json` entry into your Kilo CLI MCP configuration. See [examples/kilo.json](examples/kilo.json).
+2. Start the MCP server through Kilo and open your Figma design in the browser.
+3. Click **turbo-figma**, enter the port and secret from `.local/pairing.txt`, and click **Connect**. The secret is remembered for subsequent connections.
+4. The extension automatically reloads the connected Figma tab and loads the design. Wait until it is ready.
+   **Disconnect** stops the connection and capture. The cache size updates automatically; **Clear cache** removes local snapshots.
+5. Give the agent a Figma node URL and describe your task.
+
+For example: “Read this section's design, take a screenshot, and export the images needed to implement it.”
+
+Screenshots or asset exports can run alongside `get_design_map` and `get_design_context`: short snapshot reads wait their turn, while browser operations run independently. Specify `url` or node IDs explicitly because exports change the selection. `get_connection_status` is also available during operations. `get_selection` may see the changed selection or ask you to retry.
+
+Only one `get_screenshot` or one `export_assets` batch can run at a time; a second request receives `busy`. Assets within a batch are exported sequentially. Wait for requests to finish before clearing the cache, starting a new capture, or reconnecting. Screenshots and network snapshots are not guaranteed to represent the same instant; revision changes still require a fresh read.
+
+### Reading designs with an agent
+
+1. `get_design_map({url})` returns a compact branch map: IDs, parents, names, types, geometry, and `hasChildren`. The default depth is 2. Then use `get_screenshot({url})` for a visual reference.
+2. `get_design_context({url, nodeIds, observation, revision})` reads selected sections in batches of up to 20 IDs. Keep `url` pointing to the original root; use `nodeIds` from the map unchanged, including paths inside instances. Overlapping sections are deduplicated. `depth` is relative to each selected section.
+3. For targeted details, use `get_design_context({url, nodeIds, depth: 0, fields: ["text"], observation, revision})`. Field groups are `layout`, `style`, `text`, and `component`; all are returned by default. When reading a container directly, `pendingDepth` reports unread descendants even if the container itself was fully returned.
+
+Take `observation` from the map response and `revision` from `freshness.revision`. If the snapshot or revision changes, the server returns STALE: refresh the map. Screenshots are taken separately from the live tab and are not an atomic part of the network snapshot.
+
+All reads are bounded by `maxBytes` (24,000 bytes by default) and `maxNodes` (200). Request subsequent pages with unchanged arguments and `traversal.continuation`. Also check `pendingDepth`, `missingNodeIds`, `propertiesOmitted`, and unresolved diagnostics: reaching the end of pagination does not mean all data is complete. The `nodeIds` search is limited by the original branch, visibility, and a scan depth of 50; missing IDs are listed explicitly. For a deeper map, repeat `get_design_map` with a higher `depth` (up to 12).
+
+Compact responses contain combined CSS in `layout.css`. If `layout` is excluded, combined CSS is available in `style.css`. Duplicate `properties`, `cssText`, the CSS copy in `style` when `layout` is present, and repeated per-node explanations are omitted. `resolvedValues` contains original values only for CSS properties replaced with variables. Shared rules appear in `semantics`; individual error reasons, original styles, text, overrides, and hug/fill rules are preserved. A group excluded through `fields` does not imply that its properties are absent in Figma.
+
+After updating, restart MCP in your client so it reloads the tool list and instructions.
+
+To use your UI kit's CSS variables, add `variablesFile` with an absolute CSS file path to `.local/config.json` and restart MCP. The file must contain flat `:root` blocks with custom properties.
+
+Screenshots and exports run in the background through Figma's native Export: they do not activate the tab or window or use the clipboard. During network capture, the extension keeps Figma active through the debugger so you can switch tabs. Export preserves this mode; stopping capture removes it along with the debugger. When exporting without capture, this mode is enabled only for the operation. After capture disconnects, click **Connect** again. The connection secret is stored locally; do not share it with the agent.
+
+### Extension statuses
+
+The toolbar badge shows the connection state. Click it to see a detailed message.
+
+| Badge | Meaning | Action |
+| --- | --- | --- |
+| **ON**, green | The extension is connected to MCP. | Check capture readiness in the popup, then give the agent a task. |
+| **RUN**, blue | An agent request is running. | You can work in another window; the request does not change focus. |
+| **…**, yellow | Connecting or waiting for reconnection. | Wait. If it persists, check that MCP is running in Kilo and the port matches. |
+| **OFF**, gray | Disconnected. | Open the desired Figma tab, click the extension icon, and click **Connect**. |
+| **!**, red — stale snapshot | Capture was interrupted; previous data is no longer current. | Click **Connect** to reload the tab and start a new capture. |
+| **!**, red — connection error | The connection was rejected or could not be restored. | Read the popup message. Check the port and secret, disconnect any other connection to this MCP server, and retry **Connect**. |
+
+**ON does not mean the design has been captured.** The popup's **Network capture** section has a separate status:
+
+| Message | Action |
+| --- | --- |
+| Capture disabled or stopped | Open the desired Figma tab and click **Connect**. |
+| Connecting capture, recording, or saving a snapshot | Wait for the design to finish loading. |
+| Snapshot saved; observation enabled | The agent can read the design. |
+| Checking network update… | Wait for changes to be applied. |
+| Stale snapshot, incomplete capture, or timeout | Click **Connect** again. |
+| Capture unavailable or debugging could not be enabled | Check the browser version and the extension's `debugger` permission. Follow the popup message. |
+
+### Recovering from a disconnect
+
+Reconnecting restores the bridge but does not make the previous snapshot current. After reconnecting or restarting MCP or the service worker, click **Connect** and wait until ready. The extension prompts you to do this. Clicking **Connect** reloads the tab and starts capture; automatic reconnection alone does not reload the tab. Start reading again: continuations from the previous observation are invalid.
+
+`get_connection_status` separately returns `readReady` (ready to start reading), `snapshotState` (`capture_required`, `capturing`, `ready`), and `nextAction` (`connect`, `wait`, `reload_and_capture`, `read`). Readiness refers to the connected file's snapshot and does not guarantee a selection or export availability. Status reflects the moment it was checked.
+
+Vector descendants and individual text characters are returned compactly in detailed context: ID, geometry, CSS, and original text, marked with `detailsOmitted`. Retrieve full properties with `nodeIds: [id]`, `depth: 0`. Screenshots and exports expand the target node's ancestors from top to bottom using the network snapshot; the required page must be open in Figma.
+
+## Publishing releases
+
+The existing [Actions workflow](.github/workflows/test.yml) checks, tests, and packages the project on Windows x64, Linux x64, and macOS arm64. Ordinary pushes and pull requests produce downloadable Actions artifacts. A pushed `vX.Y.Z` tag additionally publishes a **GitHub Release** with three archives and `SHA256SUMS`, only after all three jobs pass.
+
+1. Set the same version in `package.json`, `package-lock.json` (including its root package), `Cargo.toml`, the `turbo-figma` entry in `Cargo.lock`, `extension/manifest.json`, and `resources/tools.json`. Use patch for fixes, minor for compatible features, major for incompatible changes.
+2. Write bilingual release notes in `releases/X.Y.Z.md`, check the extension’s connection to Figma, run `npm run check` and `npm test`, commit the changes, and push the release tag matching that version:
+
+   ```sh
+   git tag vX.Y.Z
+   git push origin vX.Y.Z
+   ```
+
+3. Wait for Actions: it uploads the three archives and checksums to a draft, then publishes the release automatically. Notes come from `releases/X.Y.Z.md` and should include compatibility and upgrade steps. Version or tag mismatches fail the checks.
+
+`npm run release:pack` packages the current platform locally into `dist/` after building. Packaging uses an explicit file list and excludes `.local/`, secrets, caches, and development dependencies. Tests extract an archive, execute the packaged binary, and run setup without installing dependencies.
+
+To update, stop MCP, replace the server and extension together, preserve `.local/`, reload the extension in `chrome://extensions`, restart MCP, and capture again. If you move to a new directory, copy `.local/` there, rerun setup with the same asset path, and update the Kilo configuration with the generated paths.

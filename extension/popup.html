@@ -1,23 +1,23 @@
 <!doctype html>
-<html lang="ru"><meta charset="utf-8"><title>turbo-figma</title>
+<html lang="en"><meta charset="utf-8"><title>turbo-figma</title>
 <link rel="stylesheet" href="style.css"><link rel="stylesheet" href="popup.css">
 <main>
 <h1>turbo-figma</h1>
-<p id="status" role="status">Проверяю соединение…</p>
+<p id="status" role="status" data-i18n="checking_connection">Checking connection…</p>
 <p id="target"></p>
 <form id="connect">
-<label>Порт MCP<input id="port" type="number" min="1024" max="65535" value="3055" required></label>
-<div id="saved-secret" hidden><p>Секрет сохранён</p><button id="change-secret" type="button">Ввести новый секрет</button></div>
-<label id="secret-field">Секрет<input id="secret" type="password" autocomplete="off" minlength="32" maxlength="256" placeholder="Вставь секрет подключения" required></label>
-<button id="submit" type="submit">Подключить</button>
-<button id="disconnect" type="button">Отключить</button>
+<label><span data-i18n="mcp_port">MCP port</span><input id="port" type="number" min="1024" max="65535" value="3055" required></label>
+<div id="saved-secret" hidden><p data-i18n="secret_saved">Secret saved</p><button id="change-secret" type="button" data-i18n="change_secret">Enter a new secret</button></div>
+<label id="secret-field"><span data-i18n="secret">Secret</span><input id="secret" type="password" autocomplete="off" minlength="32" maxlength="256" placeholder="Paste the connection secret" data-i18n-placeholder="secret_placeholder" required></label>
+<button id="submit" type="submit" data-i18n="connect">Connect</button>
+<button id="disconnect" type="button" data-i18n="disconnect">Disconnect</button>
 </form>
-<section class="cache" aria-label="Сетевой захват">
-<p id="capture-status" role="status">Сетевой захват выключен.</p>
+<section class="cache" aria-label="Network capture" data-i18n-aria-label="network_capture">
+<p id="capture-status" role="status" data-i18n="capture_idle">Network capture is off.</p>
 </section>
-<section class="cache" aria-label="Кэш макетов">
-<p id="cache-status" role="status">Кеш: подключись к MCP, чтобы узнать размер.</p>
-<button id="cache-clear" type="button" disabled>Очистить кеш</button>
+<section class="cache" aria-label="Design cache" data-i18n-aria-label="design_cache">
+<p id="cache-status" role="status" data-i18n="cache_connect">Cache: connect to MCP to see its size.</p>
+<button id="cache-clear" type="button" disabled data-i18n="clear_cache">Clear cache</button>
 </section>
-<div class="secondary"><a href="https://github.com/turbopypip/turbo-figma#readme" target="_blank" rel="noopener noreferrer">Информация ↗</a><button id="forget" type="button">Забыть ключ</button></div>
+<div class="secondary"><a href="https://github.com/turbopypip/turbo-figma#readme" target="_blank" rel="noopener noreferrer" data-i18n="information">Information ↗</a><button id="forget" type="button" data-i18n="forget_key">Forget key</button></div>
 </main><script type="module" src="popup.js"></script><script type="module" src="network-popup.js"></script></html>

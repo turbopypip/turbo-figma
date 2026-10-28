@@ -2,12 +2,25 @@
   "manifest_version": 3,
   "minimum_chrome_version": "125",
   "name": "turbo-figma",
-  "version": "1.0.1",
-  "description": "Connect an explicitly selected Figma tab to a local turbo-figma MCP server.",
-  "permissions": ["debugger", "alarms", "storage", "activeTab", "scripting"],
-  "action": { "default_title": "turbo-figma", "default_popup": "popup.html" },
-  "background": { "service_worker": "background.js", "type": "module" },
+  "version": "1.1.0",
+  "description": "__MSG_extension_description__",
+  "permissions": [
+    "debugger",
+    "alarms",
+    "storage",
+    "activeTab",
+    "scripting"
+  ],
+  "action": {
+    "default_title": "turbo-figma",
+    "default_popup": "popup.html"
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'none'; connect-src ws://127.0.0.1:*"
-  }
+  },
+  "default_locale": "en"
 }

@@ -12,7 +12,7 @@ const seenCalls = new Map();
 const calls = [];
 let replayedEvents = 0;
 for (const event of events) {
-  if (event.type !== 'tool_use' || !['turbo-figma_get_design_context','denis-figma-mcp_get_design_context'].includes(event.part?.tool)) continue;
+  if (event.type !== 'tool_use' || !['turbo_figma_get_design_context','turbo-figma_get_design_context','denis-figma-mcp_get_design_context'].includes(event.part?.tool)) continue;
   const part = event.part;
   const key = part.callID ? JSON.stringify([event.sessionID ?? part.sessionID, part.callID]) : undefined;
   if (key && seenCalls.has(key)) {
@@ -77,7 +77,7 @@ const summary = {
   }),
   clientTruncated: calls.filter(c => c.state.metadata?.truncated).length,
   maxBytes: Math.max(0, ...calls.map(c => Buffer.byteLength(c.state.output ?? ''))),
-  otherTools: events.filter(e => e.type === 'tool_use' && !['turbo-figma_','denis-figma-mcp_'].some(prefix=>e.part?.tool?.startsWith(prefix))).map(e => e.part.tool),
+  otherTools: events.filter(e => e.type === 'tool_use' && !['turbo_figma_','turbo-figma_','denis-figma-mcp_'].some(prefix=>e.part?.tool?.startsWith(prefix))).map(e => e.part.tool),
   agentErrors: events.filter(e => e.type === 'error').map(e => ({name: e.error?.name,
     statusCode: e.error?.data?.statusCode, message: e.error?.data?.message})),
   errors,

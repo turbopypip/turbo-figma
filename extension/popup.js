@@ -1,3 +1,5 @@
+import { t, localizeDocument } from './i18n.js';
+localizeDocument(document);
 const status = document.getElementById('status');
 const secretInput = document.getElementById('secret');
 function showSecretState(pairing) {
@@ -24,21 +26,21 @@ function cacheButtons() {
   document.getElementById('cache-clear').disabled = pending || !connected;
 }
 let cacheUpdatedAt = 0;
-const size = bytes => `${(bytes / 1048576).toFixed(2)} МиБ`;
+const size = bytes => t('size_mib', [(bytes / 1048576).toFixed(2)]);
 async function cacheAction(name) {
   if (pending) return;
   pending = true; cacheButtons();
-  if (name === 'cache-clear') cacheStatus.textContent = 'Очищаю кэш…';
+  if (name === 'cache-clear') cacheStatus.textContent = t('cache_clearing');
   try {
     const value = await send(name);
     if (value.error) { cacheStatus.textContent = value.error; return; }
     if (!value.cache || !Number.isFinite(value.cache.bytes)) throw new Error('Invalid cache response');
     const info = value.cache;
-    cacheStatus.textContent = `Кеш: ${size(info.bytes)}.`;
+    cacheStatus.textContent = t('cache_size', [size(info.bytes)]);
     cacheStatus.title = info.protectedEntries
-      ? `Посторонних или непроверенных записей: ${info.protectedEntries}; они сохранены и не включены в размер.`
+      ? t('cache_protected', [String(info.protectedEntries)])
       : '';
-  } catch { cacheStatus.textContent = 'Не удалось получить данные кеша. Проверь соединение с MCP.'; }
+  } catch { cacheStatus.textContent = t('cache_error'); }
   finally { cacheUpdatedAt = Date.now(); pending = false; cacheButtons(); }
 }
 document.getElementById('cache-clear').addEventListener('click', () => cacheAction('cache-clear'));
@@ -47,18 +49,18 @@ async function refresh() {
   if (pending || Date.now() < errorUntil) return;
   try {
     const value = await send('status');
-    status.textContent = value.message || 'Отключено';
+    status.textContent = value.message || t('disconnected');
     const wasConnected = connected;
     connected = ['connected', 'busy'].includes(value.state); cacheButtons();
     const loading = ['starting', 'capturing', 'finishing', 'updating', 'stopping'].includes(value.capture?.state);
     if (connected && !loading && !value.busy && (!wasConnected || Date.now() - cacheUpdatedAt >= 10000)) await cacheAction('cache-info');
-    if (connected && loading && !cacheUpdatedAt) cacheStatus.textContent = 'Кеш: размер появится после загрузки макета.';
+    if (connected && loading && !cacheUpdatedAt) cacheStatus.textContent = t('cache_loading');
     if (!connected) {
       cacheUpdatedAt = 0;
-      cacheStatus.textContent = 'Кеш: подключись к MCP, чтобы узнать размер.';
+      cacheStatus.textContent = t('cache_connect');
     }
-    if (value.tabId && selected?.id !== value.tabId) document.getElementById('target').textContent = 'Подключён другой макет. «Подключить» переключит мост на текущий.';
-  } catch { connected = false; cacheButtons(); status.textContent = 'Расширение обновилось. Закрой это окно и открой значок снова.'; }
+    if (value.tabId && selected?.id !== value.tabId) document.getElementById('target').textContent = t('other_design');
+  } catch { connected = false; cacheButtons(); status.textContent = t('extension_updated'); }
 }
 async function action(name, extra = {}) {
   if (pending) return;
@@ -66,10 +68,10 @@ async function action(name, extra = {}) {
   document.getElementById('submit').disabled = true;
   try {
     const value = await send(name, extra);
-    status.textContent = value.error || value.message || 'Готово';
+    status.textContent = value.error || value.message || t('done');
     errorUntil = value.error ? Date.now() + 5000 : 0;
     if (value.state) connected = value.state === 'connected';
-  } catch { status.textContent = 'Не удалось выполнить действие. Открой значок расширения ещё раз.'; }
+  } catch { status.textContent = t('action_retry'); }
   finally { pending = false; cacheButtons(); document.getElementById('submit').disabled = !selected; }
 }
 document.getElementById('connect').addEventListener('submit', event => {
@@ -82,13 +84,13 @@ async function start() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   selected = /^https:\/\/www\.figma\.com\/(design|file)\/[^/]+/.test(tab?.url || '') ? tab : undefined;
   document.getElementById('submit').disabled = !selected;
-  document.getElementById('target').textContent = selected ? 'Подключение к текущей вкладке Figma' : 'Для нового подключения открой макет Figma и нажми значок расширения.';
+  document.getElementById('target').textContent = selected ? t('current_tab') : t('open_design');
   const { pairing } = await chrome.storage.local.get('pairing');
   if (pairing) document.getElementById('port').value = pairing.port;
   showSecretState(pairing);
   await refresh();
 }
-start().catch(() => { status.textContent = 'Не удалось прочитать настройки подключения.'; });
+start().catch(() => { status.textContent = t('settings_read_error'); });
 const timer = setInterval(refresh, 1000);
 window.addEventListener('pagehide', () => {
   clearInterval(timer);

@@ -1,3 +1,4 @@
+import { t, popupSource } from './i18n-fixture.mjs';
 import { initialRecords } from './wire-fixture.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -228,7 +229,7 @@ test('connection routes capture into disk store and disconnect removes debugger 
 test('capture popup only displays status and has no capture controls or technical hints',async()=>{
   const vm=await import('node:vm');const {readFile}=await import('node:fs/promises');
   const status={};const sent=[];let close,cleared=false;
-  vm.runInNewContext(await readFile('extension/network-popup.js','utf8'),{
+  vm.runInNewContext(popupSource(await readFile('extension/network-popup.js','utf8')),{t,
     document:{getElementById:id=>{assert.equal(id,'capture-status');return status;}},
     window:{addEventListener:(event,fn)=>{close=fn;}},setInterval:()=>1,clearInterval(){cleared=true;},
     chrome:{runtime:{sendMessage:async msg=>{sent.push(msg);return {capture:{message:'Снимок сохранён'}};}}}});

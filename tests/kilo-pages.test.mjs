@@ -9,12 +9,13 @@ const snapshot={fileKey:'test',sessionId:'capture',generation:1};
 const page=(id,continuation)=>({adapter:'figma-network-snapshot',snapshot,
   freshness:{status:'observed',snapshot,revision:0},nodes:[{id}],
   traversal:{eligibleRecords:2,continuation,complete:continuation===null,pendingDepthCount:0,unresolvedInstanceCount:0}});
-const call=(output,continuation)=>({type:'tool_use',sessionID:'session',part:{callID:crypto.randomUUID(),tool:'turbo-figma_get_design_context',
+const call=(output,continuation)=>({type:'tool_use',sessionID:'session',part:{callID:crypto.randomUUID(),tool:'turbo_figma_get_design_context',
   state:{status:'completed',input:{url:'https://www.figma.com/design/test/File?node-id=1-2',...(continuation?{continuation}:{})},
     output:JSON.stringify(output),metadata:{truncated:false}}}});
 const valid=()=>[call(page('1','next')),call(page('2',null),'next'),call(page('1','next'))];
 for(const [name,mutate,passed] of [
   ['complete continuation chain and repeat',a=>a,true],
+  ['previous turbo-figma prefix remains readable',a=>a.map(e=>({...e,part:{...e.part,tool:'turbo-figma_get_design_context'}})),true],
   ['legacy tool prefix remains readable',a=>a.map(e=>({...e,part:{...e.part,tool:'denis-figma-mcp_get_design_context'}})),true],
   ['compaction re-emits old events with the same call IDs',a=>[a[0],a[1],a[1],a[0],a[2]],true],
   ['real repeated request has a new call ID',a=>[a[0],{...a[0],part:{...a[0].part,callID:'new'}},a[1],a[2]],false],

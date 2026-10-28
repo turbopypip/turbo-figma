@@ -1,6 +1,6 @@
 {
   "mcp": {
-    "turbo-figma": {
+    "turbo_figma": {
       "type": "local",
       "command": [
         "C:/tools/turbo-figma/target/release/turbo-figma.exe",
