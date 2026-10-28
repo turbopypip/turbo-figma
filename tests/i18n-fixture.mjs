@@ -11,4 +11,4 @@ export function mockI18n(locale) {
 globalThis.chrome = { i18n: mockI18n('ru') };
 export { t } from '../extension/i18n.js';
 // VM popup tests supply imported functions through their context.
-export const popupSource = source => source.replace(/^import .* from '\.\/i18n\.js';\n/m, '');
+export const popupSource = source => source.replace(/^import .* from '\.\/i18n\.js';\r?\n/m, '');

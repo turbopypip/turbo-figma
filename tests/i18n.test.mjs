@@ -1,7 +1,8 @@
+import { Script } from 'node:vm';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, readdir } from 'node:fs/promises';
-import { catalogs, mockI18n } from './i18n-fixture.mjs';
+import { catalogs, mockI18n, popupSource } from './i18n-fixture.mjs';
 import { t, localizeDocument } from '../extension/i18n.js';
 import { createStatusBadge } from '../extension/badge.js';
 import { createConnection } from '../extension/connection.js';
@@ -47,4 +48,15 @@ for (const locale of ['en', 'ru', 'de']) test(`popup, connection and badge use $
   const status = await connection.control({ action: 'status' });
   assert.equal(status.message, expected.disconnected.message);
   assert.equal(status.capture.message, expected.capture_requirements.message);
+});
+
+
+test('popup VM fixtures accept LF and Windows CRLF checkouts', async () => {
+  for (const file of ['popup.js', 'network-popup.js']) {
+    const source = await readFile(`extension/${file}`, 'utf8');
+    for (const ending of ['\n', '\r\n']) {
+      const prepared = popupSource(source.replace(/\r?\n/g, ending));
+      assert.doesNotThrow(() => new Script(prepared), `${file}: ${JSON.stringify(ending)}`);
+    }
+  }
 });
