@@ -11,6 +11,7 @@ pub struct Inspector {
     started: bool,
     ended: bool,
     nodes: usize,
+    inflater: input::WireInflater,
     pub selection: Option<Vec<String>>,
 }
 impl Inspector {
@@ -24,6 +25,7 @@ impl Inspector {
             started: false,
             ended: false,
             nodes: 0,
+            inflater: input::WireInflater::default(),
             selection: None,
         }
     }
@@ -72,7 +74,7 @@ impl Inspector {
                     .ok_or("Initial schema missing: reload Figma and capture again")?;
                 let before = self.nodes;
                 let message = value(codec.decode(
-                    &input::inflate(&binary, 64 * 1024 * 1024)?,
+                    &self.inflater.inflate(&binary, 64 * 1024 * 1024)?,
                     &mut |n| {
                         if !self.started || self.ended || value(n)["phase"] != "CREATED" {
                             return Err("Invalid initial node batch".into());
@@ -84,6 +86,7 @@ impl Inspector {
                         Ok(())
                     },
                 )?);
+                self.inflater.message(message["type"].as_str())?;
                 if message["type"] != "NODE_CHANGES" && self.nodes != before {
                     return Err("Nodes outside initial node batch".into());
                 }

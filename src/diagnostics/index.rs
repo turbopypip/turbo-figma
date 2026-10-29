@@ -44,6 +44,7 @@ pub fn run(mode: &str, config: Option<&str>) -> Result<()> {
     let mut index_ms = 0.;
     if mode == "managed" || runtime {
         let mut codec = None;
+        let mut inflater = input::WireInflater::default();
         input::input(
             Path::new(c["directory"].as_str().ok_or("Directory required")?),
             &c["snapshot"],
@@ -59,14 +60,16 @@ pub fn run(mode: &str, config: Option<&str>) -> Result<()> {
                     }
                 } else {
                     let d = codec.as_ref().ok_or("Missing wire schema")?;
-                    let bytes = input::inflate(b, input::FRAME)?;
+                    let bytes = inflater.inflate(b, input::FRAME)?;
                     let m = d.decode(&bytes, &mut |n| {
                         let t = Instant::now();
                         disk.accept(value(n))?;
                         index_ms += t.elapsed().as_secs_f64() * 1000.;
                         Ok(())
                     })?;
-                    disk.message(&value(m))?;
+                    let m = value(m);
+                    inflater.message(m["type"].as_str())?;
+                    disk.message(&m)?;
                 }
                 Ok(())
             },

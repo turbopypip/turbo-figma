@@ -221,11 +221,76 @@ pub fn inflate(data: &[u8], limit: usize) -> Result<Vec<u8>> {
     let mut decoder = zstd::bulk::Decompressor::new()?;
     // fzstd deliberately ignores checksum content; preserve its acceptance contract.
     decoder.set_parameter(zstd::zstd_safe::DParameter::ForceIgnoreChecksum(true))?;
-    let mut out = vec![0; size];
-    let written = decoder.decompress_to_buffer(data, &mut out[..])?;
-    require(written == size, "Zstandard size mismatch")?;
+    // With no declared size, the output is still bounded by the caller limit.
+    let out = decoder.decompress(data, size.unwrap_or(limit))?;
+    require(
+        size.is_none_or(|size| out.len() == size),
+        "Zstandard size mismatch",
+    )?;
     Ok(out)
 }
+/// Figma brackets a shared zstd context with Kiwi STREAM_START/STREAM_END.
+/// Standalone messages and the schema retain strict complete-frame validation.
+#[derive(Default)]
+pub struct WireInflater {
+    stream: Option<(zstd::stream::raw::Decoder<'static>, bool)>,
+}
+impl WireInflater {
+    pub fn inflate(&mut self, data: &[u8], limit: usize) -> Result<Vec<u8>> {
+        use zstd::stream::raw::Operation;
+        require(limit <= FRAME, "Invalid inflate limit")?;
+        let Some((decoder, first)) = self.stream.as_mut() else {
+            return inflate(data, limit);
+        };
+        let ended = frame::stream_segment(data, limit as u64, *first)?;
+        require(!ended, "Unexpected final block inside Figma stream")?;
+        *first = false;
+        let mut out = Vec::new();
+        let mut position = 0;
+        loop {
+            // One extra byte detects overflow without growing past the limit.
+            let mut buffer = [0; 65536];
+            let capacity = buffer.len().min(limit - out.len() + 1);
+            let status = decoder.run_on_buffers(&data[position..], &mut buffer[..capacity])?;
+            position += status.bytes_read;
+            require(
+                status.bytes_written <= limit - out.len(),
+                "Decompressed message exceeds limit",
+            )?;
+            out.extend_from_slice(&buffer[..status.bytes_written]);
+            if position == data.len() && status.bytes_written < capacity {
+                break;
+            }
+            require(
+                status.bytes_read != 0 || status.bytes_written != 0,
+                "Stalled Zstandard stream",
+            )?;
+        }
+        Ok(out)
+    }
+    pub fn message(&mut self, kind: Option<&str>) -> Result<()> {
+        match kind {
+            Some("STREAM_START") => {
+                require(self.stream.is_none(), "Repeated STREAM_START")?;
+                let mut decoder = zstd::stream::raw::Decoder::new()?;
+                decoder.set_parameter(zstd::zstd_safe::DParameter::WindowLogMax(26))?;
+                decoder.set_parameter(zstd::zstd_safe::DParameter::ForceIgnoreChecksum(true))?;
+                self.stream = Some((decoder, true));
+            }
+            Some("STREAM_END") => {
+                require(
+                    self.stream.as_ref().is_some_and(|(_, first)| !first),
+                    "Unexpected STREAM_END",
+                )?;
+                self.stream = None;
+            }
+            Some("JOIN_END") => require(self.stream.is_none(), "Missing STREAM_END")?,
+            _ => {}
+        }
+        Ok(())
+    }
+}
+
 fn packet(w: &mut impl Write, data: &[u8]) -> Result<()> {
     w.write_all(&(data.len() as u32).to_le_bytes())?;
     w.write_all(data)?;
@@ -329,4 +394,96 @@ pub fn metrics() -> Value {
 #[cfg(not(unix))]
 pub fn metrics() -> Value {
     Value::Null
+}
+
+#[cfg(test)]
+mod inflate_tests {
+    use super::*;
+
+    #[test]
+    fn decodes_unknown_size_with_bounded_output() {
+        // Two raw blocks in a streaming frame with a 1 KiB window.
+        let mut frame = vec![0x28, 0xb5, 0x2f, 0xfd, 0, 0, 0, 32, 0];
+        frame.extend_from_slice(&[42; 1024]);
+        frame.extend_from_slice(&[9, 0, 0, 43]);
+        let mut expected = vec![42; 1024];
+        expected.push(43);
+        assert_eq!(inflate(&frame, 1025).unwrap(), expected);
+        assert!(inflate(&frame, 1024).is_err());
+    }
+
+    #[test]
+    fn decodes_compressed_unknown_size() {
+        let expected = b"streaming capture message".repeat(1000);
+        let mut encoder = zstd::bulk::Compressor::new(3).unwrap();
+        encoder
+            .set_parameter(zstd::zstd_safe::CParameter::ContentSizeFlag(false))
+            .unwrap();
+        let frame = encoder.compress(&expected).unwrap();
+        assert_eq!(frame::content_size(&frame, FRAME as u64).unwrap(), None);
+        assert_eq!(inflate(&frame, FRAME).unwrap(), expected);
+        assert!(inflate(&frame[..frame.len() - 1], FRAME).is_err());
+    }
+
+    #[test]
+    fn figma_stream_preserves_history_and_resets_at_end() {
+        let first = b"shared compression history: 1234567890".repeat(400);
+        let second = first.clone();
+        let mut encoder = zstd::stream::write::Encoder::new(Vec::new(), 3).unwrap();
+        let mut decoder = WireInflater::default();
+        decoder.message(Some("STREAM_START")).unwrap();
+        let mut offset = 0;
+        for expected in [&first[..], &second[..], b"stream end message"] {
+            encoder.write_all(expected).unwrap();
+            encoder.flush().unwrap();
+            let chunk = &encoder.get_ref()[offset..];
+            assert_eq!(decoder.inflate(chunk, FRAME).unwrap(), expected);
+            if offset != 0 {
+                assert!(inflate(chunk, FRAME).is_err());
+            }
+            offset = encoder.get_ref().len();
+        }
+        decoder.message(Some("STREAM_END")).unwrap();
+        let standalone = zstd::bulk::compress(b"after stream", 3).unwrap();
+        assert_eq!(
+            decoder.inflate(&standalone, FRAME).unwrap(),
+            b"after stream"
+        );
+        decoder.message(Some("JOIN_END")).unwrap();
+        assert!(decoder.message(Some("STREAM_END")).is_err());
+        decoder.message(Some("STREAM_START")).unwrap();
+        assert!(decoder.message(Some("STREAM_START")).is_err());
+        assert!(decoder.message(Some("JOIN_END")).is_err());
+    }
+
+    #[test]
+    fn figma_stream_rejects_partial_blocks_and_output_overflow() {
+        // Unknown size, 1 KiB window, two complete non-final raw blocks.
+        let mut chunk = vec![0x28, 0xb5, 0x2f, 0xfd, 0, 0, 0, 32, 0];
+        chunk.extend_from_slice(&[42; 1024]);
+        chunk.extend_from_slice(&[8, 0, 0, 43]);
+        for (bytes, limit, success) in [
+            (&chunk[..], 1025, true),
+            (&chunk[..], 1024, false),
+            (&chunk[..chunk.len() - 1], 1025, false),
+        ] {
+            let mut decoder = WireInflater::default();
+            decoder.message(Some("STREAM_START")).unwrap();
+            assert_eq!(decoder.inflate(bytes, limit).is_ok(), success);
+        }
+        assert!(WireInflater::default().inflate(&chunk, FRAME).is_err());
+        let mut decoder = WireInflater::default();
+        decoder.message(Some("STREAM_START")).unwrap();
+        assert!(decoder.inflate(&chunk[6..], FRAME).is_err());
+    }
+
+    #[test]
+    fn declared_size_is_still_checked() {
+        let frame = [0x28, 0xb5, 0x2f, 0xfd, 0x20, 1, 9, 0, 0, 42];
+        assert_eq!(inflate(&frame, 1).unwrap(), vec![42]);
+        assert!(inflate(&frame, 0).is_err());
+        let mut invalid = frame;
+        invalid[5] = 2;
+        assert!(inflate(&invalid, 2).is_err());
+    }
 }

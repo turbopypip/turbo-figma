@@ -504,6 +504,7 @@ impl Engine {
             let mut disk = Disk::new(&scratch, self.fields.clone())?;
             let mut codec = None;
             let mut schema = vec![];
+            let mut inflater = input::WireInflater::default();
             let directory = self.root.join(store::key(snapshot, None)?);
             input::input(&directory, snapshot, |b| {
                 cancelled(cancel)?;
@@ -515,11 +516,13 @@ impl Engine {
                     codec = Some(Decoder::new(&schema, &self.fields)?);
                 } else {
                     let d = codec.as_ref().ok_or("Missing wire schema")?;
-                    let message = d.decode(&input::inflate(b, input::FRAME)?, &mut |n| {
+                    let message = d.decode(&inflater.inflate(b, input::FRAME)?, &mut |n| {
                         cancelled(cancel)?;
                         disk.accept(value(n))
                     })?;
-                    disk.message(&value(message))?;
+                    let message = value(message);
+                    inflater.message(message["type"].as_str())?;
+                    disk.message(&message)?;
                 }
                 Ok(())
             })?;

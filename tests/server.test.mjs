@@ -210,3 +210,25 @@ test('screenshot and asset export receive root-first ancestors',native,async t=>
   assert.equal(new URL(request.params.url).searchParams.get("node-id").replaceAll("-",":"),"1:4");
  }
 });
+
+test('Figma STREAM_START/STREAM_END preserve zstd state through capture and snapshot replay',native,async t=>{
+ const s=await setup(t);
+ const sender=createCaptureSender(s.ws,{fileKey:'test',sessionId:'streamed-initial',generation:1});
+ t.after(()=>sender.cancel());await sender.begin();
+ const header=Buffer.alloc(12);header.write('fig-wire');header.writeUInt32LE(1,8);
+ const payloads=[Buffer.concat([header,zstd(encodeBinarySchema(schema))]),zstd(codec.encodeMessage({type:'JOIN_START'})),zstd(codec.encodeMessage({type:'STREAM_START'}))];
+ for(const [i,m] of [
+  {type:'NODE_CHANGES',nodeChanges:[{guid:g(1),phase:'CREATED',type:'FRAME',name:'Stream root'}]},
+  {type:'NODE_CHANGES',nodeChanges:[{guid:g(2),phase:'CREATED',type:'TEXT',name:'Stream child',parentIndex:{guid:g(1),position:'0'}}]},
+  {type:'STREAM_END'},
+ ].entries()){
+  const bytes=Buffer.from(codec.encodeMessage(m)),block=Buffer.alloc(3);block.writeUIntLE(bytes.length<<3,0,3);
+  payloads.push(Buffer.concat([...(i===0?[Buffer.from([0x28,0xb5,0x2f,0xfd,0,0])]:[]),block,bytes]));
+ }
+ payloads.push(zstd(codec.encodeMessage({type:'JOIN_END'})));
+ let ack;
+ for(const [eventSequence,payload] of payloads.entries())ack=await sender.append(bytes({version:1,kind:'ws-received',session:'main',requestId:'stream',eventSequence,opcode:2,payload:payload.toString('base64')}));
+ await sender.finish({schemaReceived:true,joinStarted:true,joinEnded:true,receivedParts:ack.nextSequence,droppedParts:0,sequenceComplete:true});
+ const result=await s.call({...args,maxNodes:20});assert.equal(result.isError,undefined,JSON.stringify(result));
+ const context=JSON.parse(result.content[0].text);assert.deepEqual(context.nodes.map(n=>n.name),['Stream root','Stream child']);
+});

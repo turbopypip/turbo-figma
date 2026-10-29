@@ -1,5 +1,6 @@
-//! Frame envelope validation matching src/network.ts, before decoder allocation.
-pub fn content_size(data: &[u8], limit: u64) -> Result<usize, &'static str> {
+//! Frame envelope validation before decoder allocation.
+//! A valid streaming frame may omit its decompressed content size.
+fn header(data: &[u8], limit: u64) -> Result<(Option<usize>, usize, bool), &'static str> {
     if data.len() < 6 || data[..4] != [0x28, 0xb5, 0x2f, 0xfd] {
         return Err("Expected Zstandard frame");
     }
@@ -15,8 +16,8 @@ pub fn content_size(data: &[u8], limit: u64) -> Result<usize, &'static str> {
         single
     } as usize;
     let mut offset = 6 - single as usize;
-    if size_bytes == 0 || data.len() < offset + size_bytes {
-        return Err("Zstandard content size missing");
+    if data.len() < offset + size_bytes {
+        return Err("Truncated Zstandard content size");
     }
     let mut raw = [0; 8];
     raw[..size_bytes].copy_from_slice(&data[offset..offset + size_bytes]);
@@ -31,6 +32,20 @@ pub fn content_size(data: &[u8], limit: u64) -> Result<usize, &'static str> {
         return Err("Decompressed message exceeds limit");
     }
     offset += size_bytes;
+    let size = if size_bytes == 0 {
+        None
+    } else {
+        Some(usize::try_from(size).map_err(|_| "Decompressed message exceeds limit")?)
+    };
+    Ok((size, offset, flags & 4 != 0))
+}
+
+fn blocks(
+    data: &[u8],
+    mut offset: usize,
+    checksum: bool,
+    streaming: bool,
+) -> Result<bool, &'static str> {
     loop {
         if offset + 3 > data.len() {
             return Err("Truncated Zstandard block");
@@ -47,25 +62,62 @@ pub fn content_size(data: &[u8], limit: u64) -> Result<usize, &'static str> {
             return Err("Truncated Zstandard payload");
         }
         if header & 1 != 0 {
-            break;
+            if checksum {
+                offset += 4;
+            }
+            if offset != data.len() {
+                return Err("Trailing or truncated Zstandard frame");
+            }
+            return Ok(true);
+        }
+        if streaming && offset == data.len() {
+            return Ok(false);
         }
     }
-    if flags & 4 != 0 {
-        offset += 4;
-    }
-    if offset != data.len() {
-        return Err("Trailing or truncated Zstandard frame");
-    }
-    usize::try_from(size).map_err(|_| "Decompressed message exceeds limit")
+}
+
+pub fn content_size(data: &[u8], limit: u64) -> Result<Option<usize>, &'static str> {
+    let (size, offset, checksum) = header(data, limit)?;
+    blocks(data, offset, checksum, false)?;
+    Ok(size)
+}
+
+// Each Figma STREAM message ends at a complete block boundary (a zstd flush).
+// A continuation has no frame header; only the first message carries one.
+pub fn stream_segment(data: &[u8], limit: u64, first: bool) -> Result<bool, &'static str> {
+    let offset = if first {
+        let (size, offset, checksum) = header(data, limit)?;
+        if size.is_some() || checksum {
+            return Err("Unsupported streaming Zstandard header");
+        }
+        offset
+    } else {
+        0
+    };
+    blocks(data, offset, false, true)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     #[test]
+    fn unknown_size_envelope() {
+        // No content size; a 1 KiB window and one raw byte.
+        let frame = [0x28, 0xb5, 0x2f, 0xfd, 0, 0, 9, 0, 0, 42];
+        assert_eq!(content_size(&frame, 1024), Ok(None));
+        assert!(content_size(&frame, 1023).is_err());
+        for n in 0..frame.len() {
+            assert!(content_size(&frame[..n], 1024).is_err());
+        }
+        let mut trailing = frame.to_vec();
+        trailing.push(0);
+        assert!(content_size(&trailing, 1024).is_err());
+    }
+
+    #[test]
     fn bounded_envelope() {
         let frame = [0x28, 0xb5, 0x2f, 0xfd, 0x20, 1, 9, 0, 0, 42];
-        assert_eq!(content_size(&frame, 1), Ok(1));
+        assert_eq!(content_size(&frame, 1), Ok(Some(1)));
         assert!(content_size(&frame, 0).is_err());
         for n in 0..frame.len() {
             assert!(content_size(&frame[..n], 1).is_err());

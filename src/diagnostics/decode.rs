@@ -36,6 +36,7 @@ pub fn run(mode: &str, config: Option<&str>) -> Result<()> {
     if mode == "stream" {
         let mut w = io::BufWriter::new(io::stdout().lock());
         let mut codec = None;
+        let mut inflater = input::WireInflater::default();
         input::input(
             Path::new(c["directory"].as_str().ok_or("Directory required")?),
             &c["snapshot"],
@@ -49,8 +50,15 @@ pub fn run(mode: &str, config: Option<&str>) -> Result<()> {
                     packet(&mut w, b'S', &schema)?;
                 } else {
                     let d = codec.as_ref().ok_or("Missing wire schema")?;
-                    let bytes = input::inflate(b, input::FRAME)?;
+                    let bytes = inflater.inflate(b, input::FRAME)?;
                     let message = d.decode(&bytes, &mut |v| value(&mut w, b'N', v))?;
+                    if let Value::Object(fields) = &message {
+                        let kind = fields.iter().find_map(|(key, value)| match value {
+                            Value::String(kind) if key == "type" => Some(kind.as_str()),
+                            _ => None,
+                        });
+                        inflater.message(kind)?;
+                    }
                     value(&mut w, b'M', message)?;
                 }
                 Ok(())
