@@ -182,3 +182,7 @@ The existing [Actions workflow](.github/workflows/test.yml) checks, tests, and p
 `npm run release:pack` packages the current platform locally into `dist/` after building. Packaging uses an explicit file list and excludes `.local/`, secrets, caches, and development dependencies. Tests extract an archive, execute the packaged binary, and run setup without installing dependencies.
 
 To update, stop MCP, replace the server and extension together, preserve `.local/`, reload the extension in `chrome://extensions`, restart MCP, and capture again. If you move to a new directory, copy `.local/` there, rerun setup with the same asset path, and update the Kilo configuration with the generated paths.
+
+## License
+
+[MIT](LICENSE) © 2026 Denis Kochkin.

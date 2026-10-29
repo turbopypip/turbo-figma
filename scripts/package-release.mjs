@@ -6,7 +6,7 @@ import { checkVersion } from './check-version.mjs';
 
 // Explicit allowlist: never package pairing secrets, caches or developer files.
 export const releaseFiles = ['extension', 'resources', 'examples', 'README.md', 'README.ru.md',
-  'package.json', 'scripts/setup.mjs', 'scripts/start.mjs'];
+  'LICENSE', 'package.json', 'scripts/setup.mjs', 'scripts/start.mjs'];
 
 export async function packageRelease(root, output = path.join(root, 'dist')) {
   const version = await checkVersion(root);
